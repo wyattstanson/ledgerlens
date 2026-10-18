@@ -343,6 +343,19 @@ Property test: volume + mix + rate + timing + residual equals the total variance
 - Candidates per driver: AutoETS, AutoARIMA and SeasonalNaive(12) from statsforecast. Use rolling-origin cross-validation (`n_windows=3`, horizons 3 and 6 months) and score with MASE and MAPE.
 - Pick the best model per driver. If none beats SeasonalNaive, use SeasonalNaive and say so.
 - Produce a 13-week cash forecast from daily payment events aggregated weekly, with prediction intervals.
+- **Run model selection through the `ml-pipeline` skill** (`ml_pipeline/PIPELINE.md`, marimo notebooks,
+  figures under `ml_pipeline/figures/`). It is the only place in LedgerLens that fits models, and its
+  hook blocks fitting until the owner approves each gate. Mapping:
+  - Steps 1-3 (Gate A): profile and plot each monthly driver series. Contract: one target per driver,
+    horizons 3 and 6 months, MASE primary and MAPE secondary, only data up to the forecast origin.
+  - Steps 4-8 (Gate B): a temporal split with `guard.split(time_col=...)`, holding out the last 6 months as
+    the frozen test set; rolling-origin CV (`n_windows=3`) runs inside the training months only.
+  - Steps 9-12 (Gate C): SeasonalNaive(12) is the baseline; AutoETS and AutoARIMA are the candidates.
+  - Steps 13-16 (Gate D): error analysis by driver, one `guard.final_test()` per driver, forecasts
+    materialized as Dagster assets, and drift checks as asset checks.
+- Rate cards (Phase 2) and interviews (Phase 3) train no models. Their thresholds (title-mapping
+  confidence 0.85, tagger kappa 0.7, the analysis-plan flags) are fixed in config before any evaluation and
+  are never tuned against the hidden ground truth.
 
 ### 10.6 Scenarios (`fpa/scenario.py`)
 
