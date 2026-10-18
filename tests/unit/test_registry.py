@@ -39,7 +39,7 @@ def test_registry_loads_the_shipped_agents_yaml():
     agents = AgentRegistry.from_yaml(REPO_ROOT / "config" / "agents.yaml")
     spec = agents.get("ratecards.panel")
     assert spec.mandate is Mandate.PROPOSE
-    assert spec.tools == ("rc.benchmark", "rc.optimize_panel", "rc.savings_bridge")
+    assert spec.tools == ("rc.benchmark", "rc.optimize_panel", "rc.savings_bridge", "rc.accept_panel")
 
 
 def test_unknown_agent_and_duplicate_agents_fail_loudly():

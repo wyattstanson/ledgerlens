@@ -14,5 +14,8 @@ jobs:
       - run: uv run pyright
       - run: mkdir -p .dagster && make dbt-parse
       - run: uv run pytest -q --cov=ledgerlens --cov-fail-under=85
-      # --allow-empty until Phase 2 adds the first golden set; remove it then so an empty run fails.
-      - run: uv run python -m ledgerlens.core.evals.run --suite offline --allow-empty
+      # Offline evals run the tools against a freshly built seed-42 warehouse. --simulate-review stands in
+      # for the human title reviewer using the hidden truth (audited as simulated); demo and evals only.
+      - run: uv run python -m ledgerlens.cli generate --seed 42
+      - run: uv run python -m ledgerlens.cli pipeline ratecards --simulate-review
+      - run: uv run python -m ledgerlens.core.evals.run --suite offline

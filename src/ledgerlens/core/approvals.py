@@ -42,6 +42,15 @@ class Approval(BaseModel):
 _COLUMNS = "approval_id, agent_run_id, action, payload_json, status, decided_by, reason"
 
 
+def _check_decider(decided_by: str, *reasons: str) -> str:
+    who = decided_by.strip()
+    if not who or who.lower().startswith(AGENT_PREFIXES):
+        raise ApprovalError("approvals must be decided by a named human, not an agent or system")
+    if any(not r.strip() for r in reasons):
+        raise ApprovalError("a decision needs a reason")
+    return who
+
+
 def _row_to_approval(row: tuple[Any, ...]) -> Approval:
     approval_id, agent_run_id, action, payload_json, status, decided_by, reason = row
     return Approval(
@@ -92,11 +101,7 @@ class ApprovalQueue:
         return [_row_to_approval(r) for r in rows]
 
     def decide(self, approval_id: str, *, approve: bool, decided_by: str, reason: str) -> Approval:
-        who = decided_by.strip()
-        if not who or who.lower().startswith(AGENT_PREFIXES):
-            raise ApprovalError("approvals must be decided by a named human, not an agent or system")
-        if not reason.strip():
-            raise ApprovalError("a decision needs a reason")
+        who = _check_decider(decided_by, reason)
         status = ApprovalStatus.APPROVED if approve else ApprovalStatus.REJECTED
         with connect(self.db_path) as conn:
             # Conditional update so two concurrent deciders cannot both win.
@@ -113,6 +118,34 @@ class ApprovalQueue:
             current = self.get(approval_id)  # raises if missing
             raise ApprovalError(f"approval {approval_id} was already {current.status.value}")
         return self.get(approval_id)
+
+    def decide_many(
+        self, decisions: dict[str, str], *, approve: bool, decided_by: str, action: str
+    ) -> list[str]:
+        """Decide several pending approvals of one action in a single transaction.
+
+        ``decisions`` maps approval_id -> reason. All succeed or none do; returns the decided ids.
+        """
+        who = _check_decider(decided_by, *decisions.values())
+        status = ApprovalStatus.APPROVED if approve else ApprovalStatus.REJECTED
+        now = utcnow()
+        with connect(self.db_path) as conn:
+            conn.execute("begin transaction")
+            for approval_id, reason in decisions.items():
+                updated = conn.execute(
+                    """
+                    update audit.approvals
+                    set status = ?, decided_by = ?, decided_at = ?, reason = ?
+                    where approval_id = ? and action = ? and status = 'pending'
+                    returning approval_id
+                    """,
+                    [status.value, who, now, reason.strip(), approval_id, action],
+                ).fetchall()
+                if not updated:
+                    conn.execute("rollback")
+                    raise ApprovalError(f"approval {approval_id} is not a pending {action!r} request")
+            conn.execute("commit")
+        return list(decisions)
 
     def require_approved(self, approval_id: str, *, action: str) -> Approval:
         approval = self.get(approval_id)

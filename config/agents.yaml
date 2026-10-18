@@ -7,9 +7,22 @@ agents:
     mandate: read_only
     tools: [fpa.bridge, fpa.drivers, fpa.forecast]
     max_tool_calls: 8
+
+  - id: ratecards.benchmark
+    owner: procurement
+    model_task: pack_agent
+    mandate: read_only
+    tools: [rc.benchmark, rc.vendor_rates, rc.vendor_scorecard, rc.leakage, rc.mapping_status]
+    max_tool_calls: 8
   - id: ratecards.panel
     owner: procurement
     model_task: pack_agent
     mandate: propose
-    tools: [rc.benchmark, rc.optimize_panel, rc.savings_bridge]
+    tools: [rc.benchmark, rc.optimize_panel, rc.savings_bridge, rc.accept_panel]
+    max_tool_calls: 8
+  - id: ratecards.negotiation
+    owner: procurement
+    model_task: narrative
+    mandate: propose
+    tools: [rc.tail_plan, rc.benchmark, rc.vendor_rates]
     max_tool_calls: 8

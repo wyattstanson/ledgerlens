@@ -79,13 +79,25 @@ def test_record_lineage_writes_row_and_scopes_lookup_to_run(db: Path):
             "insert into audit.tool_calls values ('tc_2', 'run_2', 't', '{}', null, now(), null, 'ok')"
         )
     mine = record_lineage(
-        db, tool_call_id="tc_1", label="a", value=3.0, unit="USD", sql_text="select 3",
-        source_tables=["t"], row_ids=[1, 2],
-    )  # fmt: skip
+        db,
+        tool_call_id="tc_1",
+        label="a",
+        value=3.0,
+        unit="USD",
+        sql_text="select 3",
+        source_tables=["t"],
+        row_ids=[1, 2],
+    )
     record_lineage(
-        db, tool_call_id="tc_2", label="b", value=4.0, unit="USD", sql_text="select 4",
-        source_tables=["t"], row_ids=[],
-    )  # fmt: skip
+        db,
+        tool_call_id="tc_2",
+        label="b",
+        value=4.0,
+        unit="USD",
+        sql_text="select 4",
+        source_tables=["t"],
+        row_ids=[],
+    )
     assert lineage_values_for_run(db, "run_1") == {mine.lineage_id: 3.0}
     with connect(db) as conn:
         row = conn.execute(
@@ -97,6 +109,12 @@ def test_record_lineage_writes_row_and_scopes_lookup_to_run(db: Path):
 def test_record_lineage_rejects_non_finite_values(db: Path):
     with pytest.raises(ValueError, match="finite"):
         record_lineage(
-            db, tool_call_id="tc", label="a", value=float("nan"), unit="USD", sql_text="s",
-            source_tables=[], row_ids=[],
-        )  # fmt: skip
+            db,
+            tool_call_id="tc",
+            label="a",
+            value=float("nan"),
+            unit="USD",
+            sql_text="s",
+            source_tables=[],
+            row_ids=[],
+        )
