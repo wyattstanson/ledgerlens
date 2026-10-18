@@ -16,11 +16,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+import duckdb
 import polars as pl
 from rapidfuzz import fuzz, process
 from rapidfuzz.distance import OSA
 
-from ledgerlens.core.approvals import ApprovalQueue
+from ledgerlens.core.approvals import ApprovalQueue, DecisionKind
 from ledgerlens.core.db import connect
 from ledgerlens.core.guards import fence_untrusted
 from ledgerlens.core.llm import LLMClient
@@ -279,21 +280,45 @@ def load_title_map(db_path: Path) -> pl.DataFrame:
 
 
 def resolve_reviews(
-    db_path: Path, approvals: ApprovalQueue, choices: dict[str, str], *, decided_by: str, reason: str
+    db_path: Path,
+    approvals: ApprovalQueue,
+    choices: dict[str, str],
+    *,
+    decided_by: str,
+    reason: str,
+    kind: DecisionKind = DecisionKind.HUMAN,
 ) -> None:
-    """A human picks the role for queued titles (approval_id -> role_id): decide, then apply the mappings."""
+    """A reviewer picks the role for queued titles (approval_id -> role_id).
+
+    The approvals and the title-map updates commit together or not at all, and every chosen role must
+    exist in the standard role catalog.
+    """
+    if not choices:
+        return
+    with connect(db_path) as conn:
+        known = {r[0] for r in conn.execute("select role_id from raw_ratecards.roles").fetchall()}
+    unknown = sorted(set(choices.values()) - known)
+    if unknown:
+        raise ValueError(f"unknown role ids: {unknown}")
+
+    def apply_mappings(conn: duckdb.DuckDBPyConnection) -> None:
+        for aid, rid in choices.items():
+            updated = conn.execute(
+                "update ratecards.title_map set role_id = ?, status = 'reviewed', decided_by = ? "
+                "where approval_id = ? and status = 'pending_review' returning 1",
+                [rid, decided_by, aid],
+            ).fetchall()
+            if not updated:
+                raise ValueError(f"approval {aid} has no pending title in ratecards.title_map")
+
     approvals.decide_many(
         {aid: f"{reason} (role {rid})" for aid, rid in choices.items()},
         approve=True,
         decided_by=decided_by,
         action=MAPPING_ACTION,
+        kind=kind,
+        in_transaction=apply_mappings,
     )
-    with connect(db_path) as conn:
-        conn.executemany(
-            "update ratecards.title_map set role_id = ?, status = 'reviewed', decided_by = ? "
-            "where approval_id = ?",
-            [[rid, decided_by, aid] for aid, rid in choices.items()],
-        )
 
 
 def resolve_review(
@@ -302,7 +327,7 @@ def resolve_review(
     resolve_reviews(db_path, approvals, {approval_id: role_id}, decided_by=decided_by, reason=reason)
 
 
-SIMULATED_REVIEWER = "simulated-reviewer (synthetic truth)"
+SIMULATED_REVIEWER = "simulated:synthetic-truth"
 
 
 def simulate_review_from_truth(db_path: Path, approvals: ApprovalQueue) -> int:
@@ -316,7 +341,12 @@ def simulate_review_from_truth(db_path: Path, approvals: ApprovalQueue) -> int:
             """
         ).fetchall()
     resolve_reviews(
-        db_path, approvals, dict(pending), decided_by=SIMULATED_REVIEWER, reason="simulated review"
+        db_path,
+        approvals,
+        dict(pending),
+        decided_by=SIMULATED_REVIEWER,
+        reason="simulated review",
+        kind=DecisionKind.SIMULATED,
     )
     return len(pending)
 

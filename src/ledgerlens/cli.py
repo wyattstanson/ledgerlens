@@ -40,7 +40,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     settings = get_settings()
     config = RateCardsConfig.from_yaml(settings.config_dir / "ratecards.yaml")
-    seed = getattr(args, "seed", None) or settings.seed
+    seed = settings.seed if getattr(args, "seed", None) is None else args.seed
     if args.command == "generate":
         ensure_audit_schema(settings.db)
         world = generate_world(config.world, seed)

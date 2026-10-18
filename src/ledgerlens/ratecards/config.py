@@ -19,7 +19,7 @@ class WorldConfig(_Strict):
     months: int = Field(default=24, ge=13)
     start_month: str = Field(default="2024-10", pattern=r"^\d{4}-\d{2}$")
     max_projects_per_vendor: int = Field(default=4, ge=1)
-    line_probability: float = Field(default=0.8, gt=0, le=1)
+    line_probability: float = Field(default=0.85, gt=0, le=1)
     distinct_titles: int = Field(default=600, ge=64)
     duplicate_lines: int = Field(default=150, ge=0)
     overbill_vendors: int = Field(default=3, ge=0)

@@ -3,7 +3,7 @@
 Rules, deterministic:
 - Below the quality floor: exit.
 - Any mapped role priced at or below the role/tier median: negotiate and keep as a backup, with a target
-  rate (p25) and a walk-away rate (median) per role.
+  rate of min(current, p25) and a walk-away rate of min(current, median): never a target above today's price.
 - Otherwise: exit, since panel vendors cover every role at lower cost.
 
 The negotiation drafter agent writes the brief; these numbers are its only source.
@@ -35,11 +35,18 @@ def tail_plan(
             "role_id",
             "card_id",
             "effective_usd_per_hour",
-            pl.col("p25").alias("target_usd_per_hour"),
-            pl.col("median").alias("walk_away_usd_per_hour"),
+            "p25",
+            "median",
         )
     )
-    competitive = priced.filter(pl.col("effective_usd_per_hour") <= pl.col("walk_away_usd_per_hour"))
+    competitive = priced.filter(pl.col("effective_usd_per_hour") <= pl.col("median")).select(
+        "vendor_id",
+        "role_id",
+        "card_id",
+        "effective_usd_per_hour",
+        pl.min_horizontal("effective_usd_per_hour", "p25").alias("target_usd_per_hour"),
+        pl.min_horizontal("effective_usd_per_hour", "median").alias("walk_away_usd_per_hour"),
+    )
     vendors = scorecard.filter(~pl.col("vendor_id").is_in(list(kept))).select(
         "vendor_id", "name", "quality", "baseline_spend_usd", "roles_covered"
     )

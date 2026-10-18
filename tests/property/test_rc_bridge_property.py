@@ -80,4 +80,10 @@ def test_bridge_steps_sum_exactly_and_trace_to_lines(case):
     assert bridge.current_cents - sum(bridge.steps[s] for s in STEPS) == bridge.new_cents
     assert bridge.current_cents == sum(round(a * 100) for a in lines["amount"])
     assert set(bridge.lines["line_id"]).issubset(set(lines["line_id"]))
-    assert int(bridge.lines["cents"].sum()) == sum(bridge.steps.values())  # every step dollar is on a line
+    by_step = {s: int(c) for s, c in bridge.lines.group_by("step").agg(pl.col("cents").sum()).iter_rows()}
+    assert all(by_step.get(s, 0) == bridge.steps[s] for s in STEPS)  # every step dollar is on a line
+    assert by_step.get("current_cost", 0) == bridge.current_cents  # headline numbers trace to lines too
+    assert by_step.get("new_cost", 0) == bridge.new_cents
+    exits = set(bridge.lines.filter(pl.col("step") == "vendor_exits")["line_id"])
+    exiting_vendors = set(lines.filter(pl.col("line_id").is_in(list(exits)))["entity"])
+    assert exiting_vendors.isdisjoint(solution.kept)  # kept vendors never book "vendor exits"

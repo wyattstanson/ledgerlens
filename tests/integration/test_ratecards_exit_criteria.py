@@ -14,6 +14,7 @@ from ledgerlens.core.db import connect, ensure_audit_schema
 from ledgerlens.core.lineage import lineage_values_for_run
 from ledgerlens.core.registry import default_tool_registry
 from ledgerlens.core.tools import execute_tool
+from ledgerlens.ratecards.bridge import STEP_ORDER, STEPS
 from ledgerlens.ratecards.config import RateCardsConfig
 from ledgerlens.ratecards.drift import RATIO_EPSILON
 from ledgerlens.ratecards.generate import World, generate_world, write_world
@@ -114,20 +115,13 @@ def test_panel_honours_size_and_critical_coverage(built):
 def test_savings_bridge_sums_exactly(built):
     db, _, _ = built
     steps = dict(table(db, "select step, cents from ratecards.savings_bridge").iter_rows())
-    middle = (
-        steps["leakage_recovery"]
-        + steps["rate_harmonization"]
-        + steps["volume_shift"]
-        + steps["vendor_exits"]
-    )
-    assert steps["current_cost"] - middle == steps["new_cost"]
+    assert steps["current_cost"] - sum(steps[s] for s in STEPS) == steps["new_cost"]
     traced = dict(
         table(db, "select step, sum(cents) as cents from ratecards.savings_lines group by step").iter_rows()
     )
     assert all(
-        traced.get(s, 0) == steps[s]
-        for s in ("leakage_recovery", "rate_harmonization", "volume_shift", "vendor_exits")
-    )
+        traced[s] == steps[s] for s in STEP_ORDER
+    )  # every bridge number, headline included, is on lines
     assert (
         abs(table(db, "select optimizer_check_cents from ratecards.panel_meta").item()) < 1_000
     )  # < $10 rounding

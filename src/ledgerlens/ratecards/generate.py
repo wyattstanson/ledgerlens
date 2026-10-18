@@ -170,6 +170,7 @@ class World:
     title_truth: pl.DataFrame
     planted: pl.DataFrame
     as_of_month: str
+    seed: int
 
 
 def role_id(spec: Specialization, seniority: str) -> str:
@@ -501,6 +502,7 @@ def generate_world(config: WorldConfig, seed: int) -> World:  # noqa: PLR0912, P
         title_truth=title_truth,
         planted=pl.DataFrame(planted, schema=planted_schema),
         as_of_month=months[-1],
+        seed=seed,
     )
 
 
@@ -518,5 +520,6 @@ def write_world(db_path: Path, world: World) -> None:
             frame = getattr(world, frame_name)  # noqa: F841
             conn.execute(f"create or replace table restricted.{name} as select * from frame")  # noqa: S608
         conn.execute(
-            "create or replace table raw_ratecards.world_meta as select ? as as_of_month", [world.as_of_month]
+            "create or replace table raw_ratecards.world_meta as select ? as as_of_month, ? as seed",
+            [world.as_of_month, world.seed],
         )

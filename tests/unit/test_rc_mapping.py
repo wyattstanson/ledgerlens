@@ -5,7 +5,8 @@ import polars as pl
 import pytest
 from fakes import FakeClient, text_message
 
-from ledgerlens.core.approvals import ApprovalQueue, ApprovalStatus
+from ledgerlens.core.approvals import ApprovalQueue, ApprovalStatus, DecisionKind
+from ledgerlens.core.db import connect
 from ledgerlens.core.llm import LLMClient, ModelsConfig
 from ledgerlens.ratecards.config import MappingConfig
 from ledgerlens.ratecards.generate import SENIORITIES, SPECIALIZATIONS, role_id, standard_title
@@ -19,9 +20,11 @@ from ledgerlens.ratecards.mapping import (
     normalize_title,
     queue_reviews,
     resolve_review,
+    resolve_reviews,
     role_vocabulary,
     save_title_map,
     shortlist,
+    simulate_review_from_truth,
 )
 
 CFG = MappingConfig()
@@ -111,6 +114,8 @@ def test_llm_picker_needs_confidence_and_agreement_with_fuzzy(
 
 
 def test_review_queue_and_human_resolution(db: Path):
+    with connect(db) as conn:
+        conn.execute("create schema raw_ratecards; create table raw_ratecards.roles as select * from ROLES")
     approvals = ApprovalQueue(db)
     mapped = map_titles(["ML Scientist III", "Senior Data Scientist"], ROLES, FuzzyPicker(CFG), CFG)
     queued = queue_reviews(mapped, approvals, agent_run_id="run_1")
@@ -148,3 +153,53 @@ def test_evaluate_mapping_reports_review_rate():
     assert result["auto_accuracy"] == 0.5
     assert result["review_rate"] == 0.5
     assert result["accuracy_after_review"] == 0.5
+
+
+def _queued(db: Path) -> tuple[ApprovalQueue, str]:
+    with connect(db) as conn:
+        conn.execute("create schema raw_ratecards; create table raw_ratecards.roles as select * from ROLES")
+    approvals = ApprovalQueue(db)
+    queued = queue_reviews(
+        map_titles(["ML Scientist III"], ROLES, FuzzyPicker(CFG), CFG), approvals, agent_run_id="r"
+    )
+    save_title_map(db, queued)
+    return approvals, approvals.pending()[0].approval_id
+
+
+def test_resolving_nothing_is_a_no_op(db: Path):
+    resolve_reviews(db, ApprovalQueue(db), {}, decided_by="priya", reason="none")
+
+
+def test_unknown_roles_are_rejected_before_anything_is_decided(db: Path):
+    approvals, approval_id = _queued(db)
+    with pytest.raises(ValueError, match="unknown role ids"):
+        resolve_review(
+            db, approvals, approval_id, role_id="data_scientst.senior", decided_by="priya", reason="typo"
+        )
+    assert approvals.get(approval_id).status is ApprovalStatus.PENDING
+
+
+def test_review_decision_and_mapping_commit_together(db: Path):
+    approvals, approval_id = _queued(db)
+    with connect(db) as conn:
+        conn.execute(
+            "update ratecards.title_map set approval_id = 'ap_other'"
+        )  # mapping row no longer matches
+    with pytest.raises(ValueError, match="no pending title"):
+        resolve_review(
+            db, approvals, approval_id, role_id="data_scientist.senior", decided_by="priya", reason="ok"
+        )
+    assert approvals.get(approval_id).status is ApprovalStatus.PENDING  # rolled back with the failed update
+
+
+def test_simulated_review_is_labelled_as_simulated(db: Path):
+    approvals, approval_id = _queued(db)
+    with connect(db) as conn:
+        conn.execute(
+            "create schema restricted; create table restricted.rc_title_truth as "
+            "select 'ML Scientist III' as billed_title, 'data_scientist.senior' as role_id"
+        )
+    assert simulate_review_from_truth(db, approvals) == 1
+    decided = approvals.get(approval_id)
+    assert (decided.decided_by, decided.decided_kind) == ("simulated:synthetic-truth", DecisionKind.SIMULATED)
+    assert simulate_review_from_truth(db, approvals) == 0  # second run: nothing pending, no crash

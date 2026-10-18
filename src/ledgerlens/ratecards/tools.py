@@ -4,12 +4,16 @@ Each number's lineage stores the exact SQL and the row ids (card ids, line ids o
 """
 
 import json
+from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ledgerlens.core.approvals import ApprovalError, ApprovalQueue
 from ledgerlens.core.db import connect, utcnow
+from ledgerlens.core.lineage import sha256_text
 from ledgerlens.core.tools import Tool, ToolContext, ToolResult
+from ledgerlens.ratecards.bridge import STEP_ORDER
 
 Tier = Literal["onshore", "nearshore", "offshore"]
 
@@ -222,14 +226,6 @@ select b.step, b.cents,
 from ratecards.savings_bridge b left join ratecards.savings_lines l using (step)
 group by b.step, b.cents
 """
-STEP_ORDER = (
-    "current_cost",
-    "leakage_recovery",
-    "rate_harmonization",
-    "volume_shift",
-    "vendor_exits",
-    "new_cost",
-)
 
 
 def savings_bridge(params: _In, ctx: ToolContext) -> ToolResult:
@@ -373,27 +369,59 @@ def tail(params: TailIn, ctx: ToolContext) -> ToolResult:
 
 
 class AcceptPanelIn(_In):
-    approval_id: str = Field(description="An approved rc.accept_panel approval record")
+    approval_id: str | None = Field(
+        default=None, description="Omit when proposing. To execute: an approved rc.accept_panel record."
+    )
+
+
+def panel_snapshot(db_path: Path) -> dict[str, Any]:
+    """What a human approves: the panel as it stands now, plus a hash that changes if it moves."""
+    with connect(db_path) as conn:
+        cursor = conn.execute("select * from ratecards.panel_meta")
+        columns = [d[0] for d in cursor.description]
+        row = cursor.fetchone()
+    if row is None:
+        raise RuntimeError("the rate-card pipeline has not run yet")
+    meta = dict(zip(columns, row, strict=True))
+    if meta["status"] == "infeasible":
+        return {"status": "infeasible", "panel_hash": None}
+    state = {
+        "kept_vendors": json.loads(meta["kept_vendors"]),
+        "as_of_month": meta["as_of_month"],
+        "optimizer_cost_usd": round(float(meta["optimizer_cost_usd"]), 2),
+    }
+    return state | {"status": meta["status"], "panel_hash": sha256_text(json.dumps(state, sort_keys=True))}
 
 
 def accept_panel(params: AcceptPanelIn, ctx: ToolContext) -> ToolResult:
-    """Record the panel as accepted. Runs only against an approved approval (enforced by the agent loop)."""
-    meta = _panel_status(ctx)
-    if meta["status"] == "infeasible":
-        raise RuntimeError(
-            "there is no feasible panel to accept; resolve the reason in rc.optimize_panel first"
-        )
+    """Record the approved panel. execute_tool has already checked the approval is approved and human-decided;
+    here the panel must still be the one that was approved, and the approval is consumed in the same write."""
+    queue = ApprovalQueue(ctx.db_path)
+    approval = queue.require_approved(params.approval_id or "", action="rc.accept_panel")
+    approved = approval.payload.get("snapshot", {})
+    current = panel_snapshot(ctx.db_path)
+    if current["panel_hash"] is None:
+        raise ApprovalError("there is no feasible panel to accept; see rc.optimize_panel")
+    if approved.get("panel_hash") != current["panel_hash"]:
+        raise ApprovalError("the panel changed after it was approved; propose it again")
     with connect(ctx.db_path) as conn:
-        conn.execute(
-            "create table if not exists ratecards.panel_decisions "
-            "(approval_id varchar primary key, kept_vendors varchar, as_of_month varchar, "
-            "accepted_at timestamp)"
-        )
-        conn.execute(
-            "insert into ratecards.panel_decisions values (?, ?, ?, ?)",
-            [params.approval_id, meta["kept_vendors"], meta["as_of_month"], utcnow()],
-        )
-    return ToolResult(data={"accepted": True, "kept_vendors": json.loads(meta["kept_vendors"])})
+        conn.execute("begin transaction")
+        try:
+            conn.execute(
+                "create table if not exists ratecards.panel_decisions (approval_id varchar primary key, "
+                "kept_vendors varchar, as_of_month varchar, panel_hash varchar, accepted_at timestamp)"
+            )
+            conn.execute(
+                "insert into ratecards.panel_decisions values (?, ?, ?, ?, ?)",
+                [approval.approval_id, json.dumps(current["kept_vendors"]), current["as_of_month"],
+                 current["panel_hash"], utcnow()],
+            )  # fmt: skip
+            queue.mark_executed(approval.approval_id, conn)
+        except Exception:
+            conn.execute("rollback")
+            raise
+        conn.execute("commit")
+    return ToolResult(data={"accepted": True, "kept_vendors": current["kept_vendors"]})
 
 
 RATECARD_TOOLS: tuple[Tool, ...] = (
@@ -447,9 +475,10 @@ RATECARD_TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         "rc.accept_panel",
-        "Record the proposed panel as accepted. Needs an approved approval record.",
+        "Propose the current optimized panel for acceptance (call with no arguments); a human approves it.",
         AcceptPanelIn,
         accept_panel,
         writes=True,
+        snapshot=panel_snapshot,
     ),
 )
