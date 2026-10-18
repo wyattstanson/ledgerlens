@@ -1,10 +1,7 @@
-# Non-secret settings. Secrets come only from environment variables.
-[paths]
-warehouse = "data/warehouse.duckdb"
-dbt_project = "transform"
-
-[seeds]
-default = 42
-
-[guards]
+# Non-secret defaults. Environment variables override every key (prefix LEDGERLENS_, e.g. LEDGERLENS_DB).
+# Relative paths resolve against the repository root. Secrets come only from environment variables.
+db = "data/warehouse.duckdb"
+dbt_project_dir = "transform"
+config_dir = "config"
+seed = 42
 min_group_n = 5

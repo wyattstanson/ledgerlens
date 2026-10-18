@@ -14,5 +14,5 @@ jobs:
       - run: uv run pyright
       - run: mkdir -p .dagster && make dbt-parse
       - run: uv run pytest -q --cov=ledgerlens --cov-fail-under=85
-      # Enabled in Phase 1, when ledgerlens.core.evals.run exists.
-      # - run: uv run python -m ledgerlens.core.evals.run --suite offline
+      # --allow-empty until Phase 2 adds the first golden set; remove it then so an empty run fails.
+      - run: uv run python -m ledgerlens.core.evals.run --suite offline --allow-empty
