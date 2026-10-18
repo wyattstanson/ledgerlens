@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "ledgerlens": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "--directory", "${CLAUDE_PROJECT_DIR:-.}", "python", "-m", "ledgerlens.mcp.server"],
+      "env": { "LEDGERLENS_DB": "${CLAUDE_PROJECT_DIR:-.}/data/warehouse.duckdb" }
+    },
+    "duckdb": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["mcp-server-motherduck@1.1.0", "--db-path", "${CLAUDE_PROJECT_DIR:-.}/data/warehouse.duckdb", "--ephemeral-connections"]
+    }
+  }
+}

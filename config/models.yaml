@@ -1,0 +1,16 @@
+# Model routing (BUILD_PROMPT section 7). Swap models here, never in code.
+# Prices are USD per million tokens; cache_read_ratio is the share of base input price.
+models:
+  claude-opus-5-5:   { input_per_mtok: 4.00, output_per_mtok: 20.00, cache_read_ratio: 0.05 }
+  claude-sonnet-5-5: { input_per_mtok: 2.00, output_per_mtok: 10.00, cache_read_ratio: 0.05 }
+  claude-haiku-5-5:  { input_per_mtok: 0.10, output_per_mtok: 0.50,  cache_read_ratio: 0.10 }
+
+tasks:
+  title_mapping:     { model: claude-haiku-5-5,  effort: low,    batch: true }
+  evidence_tagging:  { model: claude-haiku-5-5,  effort: low,    batch: true }
+  pack_agent:        { model: claude-sonnet-5-5, effort: medium }
+  narrative:         { model: claude-sonnet-5-5, effort: medium }
+  eval_judge:        { model: claude-opus-5-5,   effort: medium, offline_only: true }
+
+budget:
+  monthly_soft_cap_usd: 20.0

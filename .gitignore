@@ -1,0 +1,33 @@
+# Python / uv
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+.hypothesis/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Data and generated artefacts
+data/*
+!data/.gitkeep
+transform/target/
+transform/dbt_packages/
+transform/logs/
+logs/
+.dagster/
+.tmp_dagster_home_*/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+.clawness/
+transform/.user.yml

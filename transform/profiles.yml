@@ -1,0 +1,9 @@
+# dbt always runs with transform/ as its working directory (see Makefile and Dagster),
+# so the default path resolves to <repo>/data/warehouse.duckdb.
+ledgerlens:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('LEDGERLENS_DBT_DB', '../data/warehouse.duckdb') }}"
+      threads: 4

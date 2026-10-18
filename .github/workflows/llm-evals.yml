@@ -1,0 +1,16 @@
+name: llm-evals
+# Manual only: LLM evals cost money and never run on every push.
+on: workflow_dispatch
+jobs:
+  llm-evals:
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      DAGSTER_HOME: ${{ github.workspace }}/.dagster
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with: { enable-cache: true }
+      - run: uv sync --locked --all-groups
+      - run: mkdir -p .dagster && make dbt-parse
+      - run: uv run python -m ledgerlens.core.evals.run --suite llm

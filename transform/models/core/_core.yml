@@ -1,0 +1,9 @@
+version: 2
+
+models:
+  - name: core_project_info
+    description: Scaffold model; proves the dbt to Dagster wiring works.
+    columns:
+      - name: project
+        data_tests:
+          - not_null

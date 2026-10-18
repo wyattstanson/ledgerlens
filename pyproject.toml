@@ -1,0 +1,93 @@
+[project]
+name = "ledgerlens"
+version = "0.1.0"
+description = "Governed analytics agents for FP&A, interview quality and rate cards"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "anthropic>=1.15",
+    "dagster>=1.13.26",
+    "dagster-dbt>=0.29.26",
+    "dagster-duckdb>=0.29.26",
+    "dagster-webserver>=1.13.26",
+    "dbt-core>=1.12",
+    "dbt-duckdb>=1.11",
+    "duckdb>=1.5.6",
+    "faker>=40",
+    "fastapi>=0.146",
+    "mcp>=2.3",
+    "numpy>=2.5",
+    "opentelemetry-sdk>=1.45",
+    "ortools>=9.15",
+    "pandas>=2.3,<3",
+    "pandera[polars]>=0.34",
+    "plotly>=7.1",
+    "polars>=2.0",
+    "pyarrow>=26",
+    "pydantic>=2.14",
+    "pydantic-settings>=2.16",
+    "rapidfuzz>=3.14",
+    "scipy>=1.18",
+    "statsforecast>=2.1.1",
+    "statsmodels>=0.15",
+    "streamlit>=1.66",
+    "uvicorn>=0.54",
+]
+
+[project.optional-dependencies]
+embeddings = [
+    "fastembed>=0.9",
+]
+tracing = [
+    "langfuse>=5.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14"]
+build-backend = "uv_build"
+
+# Makes this project its own workspace root so uv never walks into parent folders.
+# Needed here because D:\Grey-HP-Laptop-By-Aryansh contains a *folder* named pyproject.toml.
+[tool.uv.workspace]
+members = []
+
+[tool.ruff]
+line-length = 110
+target-version = "py313"
+extend-exclude = ["transform/target", "transform/dbt_packages", "data", "docs/BUILD_PROMPT.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "PL", "RUF", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "PLR2004", "S603", "S607"]
+
+[tool.pyright]
+typeCheckingMode = "standard"
+pythonVersion = "3.13"
+include = ["src", "app", "tests"]
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+filterwarnings = [
+  "ignore:sqlglotrs is deprecated:DeprecationWarning",
+  "ignore:AssetExecutionContext.op is deprecated:DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["ledgerlens"]
+branch = true
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.170",
+    "inspect-ai>=0.3.281",
+    "pre-commit>=4.7",
+    "pyright>=1.1.414",
+    "pytest>=9.1",
+    "pytest-cov>=7.1",
+    "ruff>=0.17",
+]

@@ -1,0 +1,10 @@
+# Non-secret settings. Secrets come only from environment variables.
+[paths]
+warehouse = "data/warehouse.duckdb"
+dbt_project = "transform"
+
+[seeds]
+default = 42
+
+[guards]
+min_group_n = 5

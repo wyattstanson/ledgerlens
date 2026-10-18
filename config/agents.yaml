@@ -1,0 +1,15 @@
+# Agent registry (BUILD_PROMPT section 9.1). The loop refuses any tool not listed for an agent.
+# mandate: read_only | propose | write_with_approval
+agents:
+  - id: fpa.variance
+    owner: fpa
+    model_task: pack_agent
+    mandate: read_only
+    tools: [fpa.bridge, fpa.drivers, fpa.forecast]
+    max_tool_calls: 8
+  - id: ratecards.panel
+    owner: procurement
+    model_task: pack_agent
+    mandate: propose
+    tools: [rc.benchmark, rc.optimize_panel, rc.savings_bridge]
+    max_tool_calls: 8
