@@ -31,6 +31,7 @@ from ledgerlens.core.registry import (
 from ledgerlens.core.tools import Tool, ToolInputError, execute_tool
 
 MAX_STRICT_TOOLS = 20  # Messages API limit on strict tools per request
+MAX_PROPOSALS_PER_RUN = 5  # keeps one run from flooding the human review queue
 
 AGENT_SYSTEM = """You are a LedgerLens analyst agent. You plan tool calls and explain their results.
 
@@ -116,13 +117,7 @@ class _Run:
 
         raw_input = dict(block.input)
         if decision is Decision.PROPOSE:
-            approval = self.deps.approvals.propose(
-                agent_run_id=self.run_id, action=tool.name, payload=raw_input
-            )
-            self.result.approval_ids.append(approval.approval_id)
-            return _tool_result(
-                block.id, f"Not executed. Proposed for human approval as {approval.approval_id}."
-            )
+            return _tool_result(block.id, self._propose(tool, raw_input))
         if decision is Decision.EXECUTE_IF_APPROVED:
             try:
                 self.deps.approvals.require_approved(str(raw_input.get("approval_id", "")), action=tool.name)
@@ -136,6 +131,23 @@ class _Run:
         self.result.numbers.extend(output.numbers)
         return _tool_result(block.id, fence_untrusted(output.model_dump_json(), source=f"tool:{tool.name}"))
 
+    def _propose(self, tool: Tool, arguments: dict[str, Any], rationale: str | None = None) -> str:
+        """Create an approval request that records exactly what would change.
+
+        The tool's snapshot (for example the panel's vendors and a hash) is stored with the request, so a
+        human approves concrete state and the write can later refuse if that state has moved.
+        """
+        if len(self.result.approval_ids) >= MAX_PROPOSALS_PER_RUN:
+            return f"Not proposed: this run already made {MAX_PROPOSALS_PER_RUN} proposals."
+        payload: dict[str, Any] = {"arguments": arguments}
+        if tool.snapshot is not None:
+            payload["snapshot"] = tool.snapshot(self.deps.db_path)
+        if rationale is not None:
+            payload["rationale"] = rationale
+        approval = self.deps.approvals.propose(agent_run_id=self.run_id, action=tool.name, payload=payload)
+        self.result.approval_ids.append(approval.approval_id)
+        return f"Not executed. Proposed for human approval as {approval.approval_id}."
+
     def accept(self, answer: FinalAnswer) -> None:
         self.result.answer = answer
         self.result.status = RunStatus.COMPLETED
@@ -145,17 +157,25 @@ class _Run:
             self.result.warnings.append("read-only agent proposed actions; they were discarded")
             return
         for proposal in answer.proposed_actions:
+            # Only write tools this agent is registered for can be proposed, with arguments that validate.
+            tool = self.deps.tools.get(proposal.action) if proposal.action in self.deps.tools else None
+            if tool is None or not tool.writes or tool.name not in self.agent.tools:
+                self.result.warnings.append(
+                    f"proposal for {proposal.action!r} discarded: not a write tool of this agent"
+                )
+                continue
             try:
-                payload = json.loads(proposal.payload_json)
-            except json.JSONDecodeError:
-                payload = {"raw": proposal.payload_json}
-            if not isinstance(payload, dict):
-                payload = {"value": payload}
-            payload["rationale"] = proposal.rationale
-            approval = self.deps.approvals.propose(
-                agent_run_id=self.run_id, action=proposal.action, payload=payload
-            )
-            self.result.approval_ids.append(approval.approval_id)
+                arguments = json.loads(proposal.payload_json)
+                tool.input_model.model_validate(arguments)
+            except (json.JSONDecodeError, ValidationError, TypeError) as exc:
+                self.result.warnings.append(
+                    f"proposal for {proposal.action!r} discarded: invalid arguments ({exc})"
+                )
+                continue
+            note = self._propose(tool, arguments, rationale=proposal.rationale)
+            if note.startswith("Not proposed"):
+                self.result.warnings.append(note)
+                break
 
 
 def run_agent(agent: AgentSpec, question: str, *, user: str, deps: AgentDeps) -> AgentRunResult:

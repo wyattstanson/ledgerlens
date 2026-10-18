@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: stg_rc__invoice_lines
+    description: One row per vendor-bill line. amount is USD at the rate stamped at posting.
+    columns:
+      - name: line_id
+        data_tests: [unique, not_null]
+      - name: pricing_model
+        data_tests:
+          - accepted_values:
+              arguments: { values: ["tm", "fte", "fixed", "outcome"] }
+      - name: vendor_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments: { to: ref('stg_rc__vendors'), field: vendor_id }
+  - name: stg_rc__rate_cards
+    description: One contracted rate per vendor and vendor title.
+    columns:
+      - name: card_id
+        data_tests: [unique, not_null]
+  - name: stg_rc__vendors
+    columns:
+      - name: vendor_id
+        data_tests: [unique, not_null]

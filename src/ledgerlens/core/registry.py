@@ -114,4 +114,6 @@ def authorize(agent: AgentSpec, tool: Tool) -> Decision:
 
 def default_tool_registry() -> ToolRegistry:
     """Every tool shipped with LedgerLens. Packs append theirs here as they land."""
-    return ToolRegistry(CORE_TOOLS)
+    from ledgerlens.ratecards.tools import RATECARD_TOOLS  # noqa: PLC0415 (packs import core; avoid a cycle)
+
+    return ToolRegistry((*CORE_TOOLS, *RATECARD_TOOLS))

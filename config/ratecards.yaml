@@ -1,0 +1,44 @@
+# Rate Card Consolidation Engine (BUILD_PROMPT section 12). All values are synthetic assumptions.
+world:
+  vendors: 40
+  specializations_per_vendor: 6
+  months: 24
+  start_month: "2024-10"
+  max_projects_per_vendor: 4
+  line_probability: 0.85
+  distinct_titles: 600
+  duplicate_lines: 150
+  overbill_vendors: 3
+  overbill_role_share: 0.3
+  overbill_start_month: 12
+  drift_vendors: 2
+  drift_per_month: 0.004
+  drift_start_month: 6
+
+normalize:
+  standard_hours: 160
+  renegotiation_age_months: 24
+
+mapping:
+  shortlist_size: 5
+  # Offline (no LLM) acceptance on token_sort_ratio within the token_set_ratio shortlist.
+  offline_accept_score: 90
+  offline_accept_margin: 6
+  # LLM acceptance (spec): confidence >= 0.85 and agrees with the fuzzy top-1.
+  llm_accept_confidence: 0.85
+
+drift:
+  threshold: 0.02 # flag lines billed more than 2% above the contracted card
+
+optimizer:
+  # Demand is per role and location tier; covering 3 tiers x 16 specializations with vendors that each
+  # offer 6 needs 14-17 vendors on the synthetic seeds, so the limit is 18 of 40.
+  panel_size: 18
+  critical_top_k: 8 # the roles with the highest baseline spend
+  max_share_critical: 0.7
+  min_quality: 0.6
+  baseline_months: 12
+  relax_order: [panel_size, critical_coverage, concentration, quality_floor]
+
+scorecard:
+  weights: { rate: 0.4, quality: 0.25, sla: 0.15, coverage: 0.1, spend_share: 0.1 }

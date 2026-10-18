@@ -15,6 +15,7 @@ from ledgerlens.mcp.server import build_server
 
 class In(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    approval_id: str | None = None
 
 
 def never(params: In, ctx: ToolContext) -> ToolResult:

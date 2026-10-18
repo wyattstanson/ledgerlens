@@ -58,7 +58,7 @@ This came out of a teardown of Deloitte (Zora AI), Fractal (Cogentiq), Tredence 
 | Agent loop | Our own thin loop on the Messages API (or the SDK's beta `tool_runner`), not the Claude Agent SDK | We need full control of the registry, approvals and lineage checks. The Agent SDK is aimed at coding-agent workloads with file and shell tools |
 | Tool exposure | Our own MCP server built on the official `mcp` SDK v2 (`MCPServer`) | Any MCP client (Claude Code, Claude Desktop) can call our governed tools |
 | API | FastAPI | Typed, documented, easy to test |
-| UI | Streamlit with Plotly | Fastest way to a credible analyst app in Python |
+| UI | ~~Streamlit with Plotly~~ FastAPI-served web UI on Render ([ADR 0002](decisions/0002-ui-on-render.md)) | Owner decision, 2026-10-19 |
 | Data | Synthetic only, seeded and reproducible, with planted problems and hidden ground truth | No consent or legal issues, and the evals know the right answers |
 | FP&A subject | P&C insurer as primary; a payments-processor variant behind `--variant processor` | Covers both open options from research |
 
@@ -488,7 +488,7 @@ This produces documents, not legal advice. Each output carries a "not legal advi
    - Concentration: `h_vr` is at most `s_max x D_r` on critical roles.
    - Quality floor: `keep_v = 0` if quality is below `q_min`.
    - On infeasibility, relax one constraint family at a time and report which one binds. Never return silently.
-7. **Savings bridge** (`bridge.py`): current cost, then rate harmonization, volume shift, vendor exits and leakage recovery (overbilling plus duplicates), giving the new cost. Every step is traced to invoice line IDs, and a property test proves the steps sum exactly.
+7. **Savings bridge** (`bridge.py`): current cost, then rate harmonization, volume shift, vendor exits and leakage recovery (overbilling plus duplicates), giving the new cost. Every step is traced to invoice line IDs, and a property test proves the steps sum exactly. An explicit FX re-translation step follows leakage recovery ([ADR 0003](decisions/0003-bridge-fx-and-approval-hardening.md)).
 8. **Drift monitor** (`drift.py`): flag any invoice line billed more than 2% above its contracted card, as a Dagster asset check.
 9. **Tail plan** (`tail.py`): for vendors not kept, list spend, roles and a proposed exit or a negotiation brief (target rate, walk-away rate). Sonnet writes the text, and the numbers come from compute.
 

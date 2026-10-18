@@ -69,7 +69,8 @@ create table if not exists audit.approvals (
     created_at   timestamp not null,
     decided_by   varchar,
     decided_at   timestamp,
-    reason       varchar
+    reason       varchar,
+    decided_kind varchar
 );
 
 create table if not exists audit.analysis_plans (
@@ -99,3 +100,5 @@ def connect(db_path: Path, *, read_only: bool = False) -> Iterator[duckdb.DuckDB
 def ensure_audit_schema(db_path: Path) -> None:
     with connect(db_path) as conn:
         conn.execute(AUDIT_DDL)
+        # Warehouses created before decided_kind existed get the column added in place.
+        conn.execute("alter table audit.approvals add column if not exists decided_kind varchar")

@@ -12,7 +12,7 @@ from fakes import (
 )
 from pydantic import BaseModel, ConfigDict
 
-from ledgerlens.core.agent_loop import AgentDeps, RunStatus, run_agent
+from ledgerlens.core.agent_loop import MAX_PROPOSALS_PER_RUN, AgentDeps, RunStatus, run_agent
 from ledgerlens.core.approvals import ApprovalQueue, ApprovalStatus
 from ledgerlens.core.db import connect
 from ledgerlens.core.llm import BudgetExceededError, LLMClient, ModelsConfig
@@ -155,7 +155,7 @@ def test_propose_agent_creates_an_approval_instead_of_writing(db: Path, models_c
     assert (approval.action, approval.status, approval.payload) == (
         "rc.approve_mapping",
         ApprovalStatus.PENDING,
-        {"mapping_id": "m1"},
+        {"arguments": {"mapping_id": "m1"}},
     )
 
 
@@ -199,17 +199,37 @@ def test_invalid_tool_input_is_returned_to_the_model(db: Path, models_config: Mo
     assert result_block["is_error"] is True and result_block["content"].startswith("Invalid input")
 
 
-def test_proposed_actions_become_approvals_for_propose_agents_only(db: Path, models_config: ModelsConfig):
-    proposal = [{"action": "rc.accept_panel", "payload_json": '{"panel": ["v1"]}', "rationale": "cheapest"}]
-    deps, _ = deps_for(db, models_config, [final_answer("See proposal.", [], proposal)])
-    result = run_agent(spec(Mandate.PROPOSE), "q", user="u", deps=deps)
+def test_proposed_actions_become_approvals_only_for_the_agents_own_write_tools(
+    db: Path, models_config: ModelsConfig
+):
+    good = {"action": "rc.approve_mapping", "payload_json": '{"mapping_id": "m9"}', "rationale": "matches"}
+    # Registered and listed for this agent, but a read tool: proposals are only for writes.
+    foreign = {"action": "core.llm_spend", "payload_json": "{}", "rationale": "not a write"}
+    invalid = {"action": "rc.approve_mapping", "payload_json": '{"wrong": 1}', "rationale": "bad args"}
+    deps, _ = deps_for(db, models_config, [final_answer("See proposals.", [], [good, foreign, invalid])])
+    agent = spec(Mandate.PROPOSE, tools=("core.llm_spend", "rc.approve_mapping"))
+    result = run_agent(agent, "q", user="u", deps=deps)
     [approval_id] = result.approval_ids
-    assert deps.approvals.get(approval_id).payload == {"panel": ["v1"], "rationale": "cheapest"}
+    assert deps.approvals.get(approval_id).payload == {
+        "arguments": {"mapping_id": "m9"},
+        "rationale": "matches",
+    }
+    assert any("not a write tool of this agent" in w for w in result.warnings)
+    assert any("invalid arguments" in w for w in result.warnings)
 
-    deps, _ = deps_for(db, models_config, [final_answer("See proposal.", [], proposal)])
+    deps, _ = deps_for(db, models_config, [final_answer("See proposal.", [], [good])])
     read_only = run_agent(spec(Mandate.READ_ONLY), "q", user="u", deps=deps)
     assert read_only.approval_ids == []
     assert "discarded" in read_only.warnings[0]
+
+
+def test_one_run_cannot_flood_the_review_queue(db: Path, models_config: ModelsConfig):
+    proposal = {"action": "rc.approve_mapping", "payload_json": '{"mapping_id": "m"}', "rationale": "r"}
+    deps, _ = deps_for(db, models_config, [final_answer("Many.", [], [proposal] * 8)])
+    agent = spec(Mandate.PROPOSE, tools=("rc.approve_mapping",))
+    result = run_agent(agent, "q", user="u", deps=deps)
+    assert len(result.approval_ids) == MAX_PROPOSALS_PER_RUN
+    assert any("already made" in w for w in result.warnings)
 
 
 def test_agent_with_unregistered_tools_refuses_to_start(db: Path, models_config: ModelsConfig):

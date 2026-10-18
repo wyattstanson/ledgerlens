@@ -1,0 +1,11 @@
+version: 2
+
+# Written by the Dagster multi-asset ratecards_world; dagster-dbt keys these as raw_ratecards/<table>.
+sources:
+  - name: raw_ratecards
+    description: Synthetic vendor bills, rate cards and vendors (NetSuite-shaped, ADR 0001).
+    schema: raw_ratecards
+    tables:
+      - name: invoice_lines
+      - name: rate_cards
+      - name: vendors

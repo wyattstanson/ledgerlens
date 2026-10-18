@@ -16,6 +16,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from ledgerlens.core.approvals import ApprovalError, ApprovalQueue
 from ledgerlens.core.db import connect, utcnow
 from ledgerlens.core.lineage import NumberRef, new_id, record_lineage, sha256_text
 
@@ -86,6 +87,8 @@ class Tool:
     input_model: type[BaseModel]
     fn: ToolFn
     writes: bool = False
+    # For write tools: state captured when the change is proposed, stored with the approval request.
+    snapshot: Callable[[Path], dict[str, Any]] | None = None
     _schema: dict[str, Any] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -93,6 +96,8 @@ class Tool:
             raise ValueError(f"tool name {self.name!r} must be dotted lowercase, e.g. 'rc.benchmark'")
         if len(self.api_name) > MAX_API_NAME:
             raise ValueError(f"tool name {self.name!r} is too long for the Messages API")
+        if self.writes and "approval_id" not in self.input_model.model_fields:
+            raise ValueError(f"write tool {self.name!r} needs an approval_id input")
         schema = self.input_model.model_json_schema()
         _assert_closed_objects(schema)
         object.__setattr__(self, "_schema", schema)
@@ -138,6 +143,13 @@ def execute_tool(tool: Tool, raw_input: Mapping[str, Any], *, db_path: Path, age
     except ValidationError as exc:
         finish("invalid_input")
         raise ToolInputError(f"{tool.name}: {exc.errors(include_url=False)}") from exc
+    if tool.writes:
+        # The one gate every caller passes through (agents, API, evals): no approved record, no write.
+        try:
+            ApprovalQueue(db_path).require_approved(str(raw_input.get("approval_id") or ""), action=tool.name)
+        except ApprovalError:
+            finish("refused")
+            raise
     try:
         result = tool.fn(params, ToolContext(db_path, agent_run_id, tool_call_id))
         if not isinstance(result, ToolResult):
