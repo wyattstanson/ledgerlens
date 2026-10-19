@@ -74,9 +74,25 @@ create table if not exists audit.approvals (
 );
 
 create table if not exists audit.analysis_plans (
-    plan_version  integer primary key,
-    sha256        varchar not null unique,
-    registered_at timestamp not null
+    plan_name     varchar not null,
+    plan_version  integer not null,
+    sha256        varchar not null,
+    plan_json     varchar not null,
+    registered_at timestamp not null,
+    primary key (plan_name, plan_version),
+    unique (plan_name, sha256)
+);
+
+create table if not exists audit.analysis_runs (
+    analysis_run_id varchar primary key,
+    pack            varchar not null,
+    plan_name       varchar not null,
+    plan_version    integer not null,
+    plan_sha256     varchar not null,
+    seed            bigint not null,
+    started_at      timestamp not null,
+    finished_at     timestamp,
+    status          varchar not null
 );
 """
 
@@ -102,3 +118,14 @@ def ensure_audit_schema(db_path: Path) -> None:
         conn.execute(AUDIT_DDL)
         # Warehouses created before decided_kind existed get the column added in place.
         conn.execute("alter table audit.approvals add column if not exists decided_kind varchar")
+        # Phase 0-2 warehouses have an unused single-plan analysis_plans table: replace it while it is empty.
+        old = conn.execute(
+            "select count(*) from information_schema.columns "
+            "where table_schema = 'audit' and table_name = 'analysis_plans' and column_name = 'plan_name'"
+        ).fetchone()
+        if old is not None and old[0] == 0:
+            rows = conn.execute("select count(*) from audit.analysis_plans").fetchone()
+            if rows is not None and rows[0] > 0:
+                raise RuntimeError("audit.analysis_plans has rows in the pre-Phase-3 layout; migrate by hand")
+            conn.execute("drop table audit.analysis_plans")
+            conn.execute(AUDIT_DDL)

@@ -27,6 +27,8 @@ Effort = Literal["low", "medium", "high", "xhigh", "max"]
 
 # 5-minute cache writes bill at 1.25x base input (Claude API pricing, checked 2026-10-19).
 CACHE_WRITE_MULTIPLIER = 1.25
+# Message Batches bill at half the standard price (Claude API pricing, checked 2026-10-19).
+BATCH_DISCOUNT = 0.5
 RETRYABLE: tuple[type[Exception], ...] = (anthropic.RateLimitError, anthropic.OverloadedError)
 
 
@@ -185,16 +187,7 @@ class LLMClient:
         max_tokens: int = 16000,
         agent_run_id: str | None = None,
     ) -> LLMResponse:
-        route = self.config.route(task)
-        if route.offline_only and not self.offline:
-            raise RuntimeError(f"task {task!r} is offline-only and cannot run on the request path")
-        cap = self.config.budget.monthly_soft_cap_usd
-        spent = self.month_to_date_spend()
-        if spent >= cap:
-            raise BudgetExceededError(
-                f"month-to-date LLM spend ${spent:.2f} has reached the ${cap:.2f} soft cap"
-            )
-
+        route = self._check_budget(task)
         request = build_request(
             route,
             system=system,
@@ -206,15 +199,36 @@ class LLMClient:
         started = time.perf_counter()
         message = self._create_with_retries(request)
         ms = (time.perf_counter() - started) * 1000
+        call_id, cost = self._log_usage(task, route, message.usage, ms, agent_run_id)
+        return LLMResponse(message=message, call_id=call_id, cost_usd=cost)
 
-        usage = message.usage
+    def _check_budget(self, task: str) -> TaskRoute:
+        route = self.config.route(task)
+        if route.offline_only and not self.offline:
+            raise RuntimeError(f"task {task!r} is offline-only and cannot run on the request path")
+        cap, spent = self.config.budget.monthly_soft_cap_usd, self.month_to_date_spend()
+        if spent >= cap:
+            raise BudgetExceededError(
+                f"month-to-date LLM spend ${spent:.2f} has reached the ${cap:.2f} soft cap"
+            )
+        return route
+
+    def _log_usage(
+        self,
+        task: str,
+        route: TaskRoute,
+        usage: Any,
+        ms: float,
+        agent_run_id: str | None,
+        multiplier: float = 1.0,
+    ) -> tuple[str, float]:
         tokens = {
             "input_tokens": int(usage.input_tokens or 0),
             "output_tokens": int(usage.output_tokens or 0),
             "cache_read_tokens": int(getattr(usage, "cache_read_input_tokens", 0) or 0),
             "cache_write_tokens": int(getattr(usage, "cache_creation_input_tokens", 0) or 0),
         }
-        cost = cost_usd(self.config.models[route.model], **tokens)
+        cost = cost_usd(self.config.models[route.model], **tokens) * multiplier
         call_id = new_id("llm")
         with connect(self.db_path) as conn:
             conn.execute(
@@ -234,7 +248,58 @@ class LLMClient:
                     utcnow(),
                 ],
             )
-        return LLMResponse(message=message, call_id=call_id, cost_usd=cost)
+        return call_id, cost
+
+    def create_batch(
+        self,
+        *,
+        task: str,
+        system: str,
+        items: dict[str, list[dict[str, Any]]],
+        output_schema: dict[str, Any] | None = None,
+        max_tokens: int = 1024,
+        poll_s: float = 30.0,
+        timeout_s: float = 24 * 3600,
+    ) -> dict[str, Any]:
+        """Run many independent requests through the Message Batches API (billed at a discount).
+
+        ``items`` maps a custom id to its messages. Returns custom id -> message for each succeeded item;
+        failed, expired or canceled items are simply absent. Usage is logged per succeeded item.
+        """
+        route = self._check_budget(task)
+        if not items:
+            return {}
+        requests = [
+            {
+                "custom_id": cid,
+                "params": build_request(
+                    route,
+                    system=system,
+                    messages=msgs,
+                    tools=None,
+                    output_schema=output_schema,
+                    max_tokens=max_tokens,
+                ),
+            }
+            for cid, msgs in items.items()
+        ]
+        started = time.perf_counter()
+        batch = self.client.messages.batches.create(requests=requests)
+        waited = 0.0
+        while batch.processing_status != "ended":
+            if waited >= timeout_s:
+                raise TimeoutError(f"batch {batch.id} did not finish within {timeout_s:.0f}s")
+            self._sleep(poll_s)
+            waited += poll_s
+            batch = self.client.messages.batches.retrieve(batch.id)
+        ms = (time.perf_counter() - started) * 1000
+        out: dict[str, Any] = {}
+        for entry in self.client.messages.batches.results(batch.id):
+            if entry.result.type == "succeeded":
+                message = entry.result.message
+                self._log_usage(task, route, message.usage, ms / len(items), None, multiplier=BATCH_DISCOUNT)
+                out[entry.custom_id] = message
+        return out
 
     def _create_with_retries(self, request: dict[str, Any]) -> Any:
         for attempt in range(1, self.max_attempts + 1):
