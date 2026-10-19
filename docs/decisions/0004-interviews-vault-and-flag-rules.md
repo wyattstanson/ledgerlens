@@ -26,7 +26,8 @@ cells.
      one role are flagged;
    - impact ratio: ratio < 0.80 (against the highest group, as LL144 defines it) and q < 0.05, where the
      test compares the group with all other candidates at that stage, never with the highest group, which
-     is picked after looking and would inflate false positives; both sides need n >= 30;
+     is picked after looking and would inflate false positives; both sides need n >= 30 (the published
+     effect size is against the highest published group, see decision 6);
    - panel agreement: Fleiss' kappa < 0.4 (rule-based, no p-value);
    - coverage and evidence shares: rule-based thresholds;
    - predictive validity: bootstrap CI of Spearman's rho includes 0, with n >= 30.
@@ -43,19 +44,37 @@ cells.
    interviews guard refuses results with person-level keys (case-insensitive), vault ids (in keys, values
    and number labels) or cells with n < 5 of any numeric type. A blocked result's lineage rows are deleted.
    A sweep test calls every tool (directly and over MCP) and inspects exports and audit rows.
-6. **Secondary suppression** (added after the Phase 3 security review). Primary suppression alone leaks:
-   the stage total is known from the other dimension, so total minus the published cells gives back a
-   lone hidden cell, and a group's n at one stage equals how many of it passed the stage before. So:
-   - in each role x stage x dimension (and each sex and race line of the intersectional table), the hidden
-     cells are either none or at least two covering at least 5 people; the smallest visible cell is hidden
-     until that holds;
-   - a group hidden at one stage stays hidden at every later stage of that role;
-   - `share` and every other value column are nulled with n; the compliance JSON is an explicit column
-     allow-list.
-   Cost: sex has only three categories, so when "Unknown" has fewer than 5 people one of Female or Male is
-   also hidden (18 of 32 role x stage comparisons in the seed-42 world). The planted cell stays visible.
-   The owner chose to keep this strict rule (2026-10-19) rather than exempt "Unknown" from the floor, with
-   a full disclosure audit planned to win the hidden comparisons back safely (see Planned).
+6. **Disclosure audit** (replaces the first-cut neighbour rule; owner decision 2026-10-19 to keep strict
+   protection and win comparisons back safely). Primary suppression hides every cell under 5, but a reader
+   can combine published numbers. `interviews/disclosure.py` writes down what a reader knows as a linear
+   system per role and asks, for each small hidden cell, how far its size and its passed and failed counts
+   can be narrowed. A cell is disclosed when any of the three has fewer than 5 possible values. Extra cells
+   are hidden only to repair a disclosure: the cheapest visible cell (intersectional before one-way,
+   Unknown or tiny groups before others, smaller before larger) among those in a constraint that binds the
+   exposed cell, read from the linear program's dual values. The search uses the linear relaxation (GLOP);
+   the result is then checked, and repaired if needed, against a whole-number reader (GSCIP).
+   The reader is assumed to know, conservatively:
+   - every visible cell's n and selected count;
+   - every stage total to within the nearest 10, each stage's passes (the next stage's total), and the
+     hires per role exactly;
+   - that each role x stage x dimension line sums to its total and intersectional cells sum to the one-way
+     cells;
+   - that a group's n at one stage is its passed count at the stage before.
+   Publication changes that make this assumption true:
+   - every group that applied to a role has a row at every stage (n may be 0), so a missing row never
+     reveals that a group had no one left;
+   - hidden rows keep only their labels, and `share` and `p_raw` are not published;
+   - impact ratios and Cohen's h (with its interval) compare a group with the highest *published* group.
+     Statistics against everyone else at the stage give the stage total away: with h to 2 decimals for
+     two groups, a reader solves for the stage's applicants and passes, and Unknown follows by
+     subtraction (Female or Male would then be hidden in 30 of 32 comparisons). The flag still uses the
+     pre-registered test against everyone else; its q is published only as a band (<0.001, <0.01, <0.05,
+     >=0.05);
+   - workload counts (calibration, process quality, panel sizes) are published to the nearest 10, so
+     they cannot pin a stage total; hires stay exact.
+   Result on the seed-42 world: one of Female or Male is hidden in 9 of 32 role x stage comparisons, down
+   from 18 under the neighbour rule. A whole-number re-audit of the published tables finds no disclosed
+   cell on seeds 42, 43 and 44.
 7. **The generic DuckDB MCP server is locked down.** `.mcp.json` starts it with
    `SET enable_external_access=false; SET lock_configuration=true`, so a client can query the warehouse
    but cannot `ATTACH` the vault or read files such as the spot-check sheet (verified against
@@ -67,17 +86,7 @@ cells.
   member of that group.
 - Any MCP client can read every interviewer's calibration cells; who may see interviewer-level data is a
   Phase 5 authorization question.
-- Suppression is checked against the additive relations listed above, not by a full linear disclosure
-  audit across every published number.
-
-## Planned: full disclosure audit
-
-Replace "always hide the smallest visible neighbour" with an audit of what the published numbers actually
-determine. Treat every hidden count (n and selected, per one-way and intersectional cell) as an unknown,
-and write down every relation a reader has: each line sums to its total, a group's n at one stage equals
-its selected count at the stage before, intersectional lines sum to the one-way cells, and the hires per
-role in predictive validity. A hidden cell is disclosed if those relations pin it to one value or to an
-interval narrower than the floor; nonnegativity matters, so this is a small linear program per role, not
-just a rank check. Hide an extra cell only when the audit finds a disclosure, choosing the cell that costs
-the least. Done when the privacy test runs the audit against the generator's truth on three seeds, finds
-no disclosed cell, and the number of hidden Female or Male comparisons falls below today's 18 of 32.
+- Not modelled by the audit: the q bands, the flags, h's interval and per-interviewer workload counts.
+  Each is coarse or rounded, but their combination is not proven harmless.
+- The audit assumes the reader knows every stage total to within 10. If another table ever publishes an
+  exact stage total, the model must be updated or that table rounded.

@@ -39,7 +39,7 @@ FAIRNESS_COLUMNS = (
     "h",
     "h_ci_low",
     "h_ci_high",
-    "q",
+    "q_band",
     "flagged",
     "suppressed",
 )
@@ -118,9 +118,9 @@ def _ll144(fair: list[dict], cross: list[dict], meta: dict) -> str:
         BANNER,
         "",
         "Selection rate and impact ratio per stage, by sex, by race/ethnicity, and intersectionally. "
-        "Impact ratio = a category's selection rate / the highest category's rate. "
+        "Impact ratio = a category's selection rate / the highest published category's rate. "
         f"Categories under {share:.0%} of the data are excluded from impact ratios, as the DCWP rules allow. "
-        f"Cells under {floor} people are suppressed, with the cells that would reveal them by subtraction. "
+        f"Cells under {floor} people are suppressed, as is any cell a reader could use to narrow one down. "
         "Unknown is reported but never compared.",
         "",
     ]

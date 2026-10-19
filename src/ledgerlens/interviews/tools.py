@@ -277,8 +277,8 @@ class ImpactIn(_In):
 
 
 IR_SQL = """
-select row_key, "group", n, selected, rate, impact_ratio, reference_group, h, h_ci_low, h_ci_high, q, tested,
-       excluded_small_share, flagged, suppressed
+select row_key, "group", n, selected, rate, impact_ratio, reference_group, h, h_ci_low, h_ci_high, q_band,
+       tested, excluded_small_share, flagged, suppressed
 from interviews.fairness where role_id = ? and stage = ? and dimension = ? order by "group"
 """
 
@@ -318,7 +318,7 @@ def impact_ratios(params: ImpactIn, ctx: ToolContext) -> ToolResult:
                 "h",
                 "h_ci_low",
                 "h_ci_high",
-                "q",
+                "q_band",
                 "tested",
                 "excluded_small_share",
                 "flagged",
@@ -484,7 +484,8 @@ INTERVIEW_TOOLS: tuple[Tool, ...] = (
     ),
     _tool(
         "iv.impact_ratios",
-        "Selection rates and impact ratios by group for one role, stage and dimension (LL144-style).",
+        "Selection rates, impact ratios and Cohen's h against the highest published group, for one role, "
+        "stage and dimension (LL144-style); the test's q is given as a band.",
         ImpactIn,
         impact_ratios,
     ),

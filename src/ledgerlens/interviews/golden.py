@@ -1,14 +1,14 @@
 """Golden eval cases for the interviews pack, computed from the generator's ground truth.
 
 Selection rates and hire counts come straight from the world's outcome tables; expected flag counts come from
-the planted problems. Nothing here runs pipeline code, but rates are only expected for cells the published
-suppression policy leaves visible (the same core rule, applied to the truth).
+the planted problems. Rates are only expected for cells the published disclosure policy leaves visible: the
+same audit, applied to the truth.
 """
 
 import polars as pl
 
-from ledgerlens.core.guards import suppress_small_groups
-from ledgerlens.interviews.fairness import IMPACT_FUNNEL, IMPACT_LINES
+from ledgerlens.interviews.disclosure import Policy, plan_hidden
+from ledgerlens.interviews.fairness import impact_ratios, intersectional
 from ledgerlens.interviews.generate import InterviewWorld
 from ledgerlens.interviews.plan import AnalysisPlan
 
@@ -30,16 +30,17 @@ def _case(case_id: str, tool: str, args: dict, expected: list[tuple[str, float]]
 def golden_cases(world: InterviewWorld, plan: AnalysisPlan) -> list[dict]:
     outcomes = world.stage_outcomes.join(world.candidate_groups, on="candidate_id")
     cases: list[dict] = []
-    cells = [
-        {"role_id": r, "stage": s, "dimension": dim, "group": g, "n": n}
-        for dim in plan.fairness.dimensions
-        for r, s, g, n in outcomes.group_by(["role_id", "stage", dim]).len().iter_rows()
-    ]
-    published = suppress_small_groups(
-        cells, value_keys=[], min_n=plan.min_group_n, lines=IMPACT_LINES, funnel=IMPACT_FUNNEL
+    fair = impact_ratios(outcomes, plan)
+    hires = {
+        r: n for r, n in world.performance.group_by("role_id").len().iter_rows() if n >= plan.min_group_n
+    }
+    hidden = plan_hidden(
+        fair, intersectional(outcomes, plan), hires, Policy(plan.min_group_n, plan.min_group_n)
     )
     visible = {
-        (c["role_id"], c["stage"], c["dimension"], c["group"]) for c in published if not c["suppressed"]
+        (r["role_id"], r["stage"], r["dimension"], r["group"])
+        for r in fair.iter_rows(named=True)
+        if r["row_key"] not in hidden
     }
 
     def rate_cases(stage: str, dimension: str, roles: list[str]) -> None:
