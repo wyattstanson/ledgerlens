@@ -14,9 +14,11 @@ from mcp import Client
 from ledgerlens.core.approvals import ApprovalError, ApprovalQueue, ApprovalStatus, DecisionKind
 from ledgerlens.core.db import connect, ensure_audit_schema
 from ledgerlens.core.lineage import lineage_values_for_run
+from ledgerlens.core.stats import cohens_h
 from ledgerlens.core.tools import execute_tool
 from ledgerlens.interviews import compliance
 from ledgerlens.interviews.config import InterviewsConfig
+from ledgerlens.interviews.disclosure import TOTAL_ROUNDING
 from ledgerlens.interviews.generate import STAGES, InterviewWorld, generate_world, write_world
 from ledgerlens.interviews.pipeline import run_interviews, spot_check_notes
 from ledgerlens.interviews.plan import AnalysisPlan
@@ -264,71 +266,56 @@ def test_rerunning_the_same_plan_keeps_its_version_and_logs_a_new_run(built: Bui
     assert stamp == [(runs[-1][0], 1)]
 
 
-FAIRNESS_VALUES = [
-    "n",
-    "selected",
-    "rate",
-    "share",
-    "impact_ratio",
-    "h",
-    "h_ci_low",
-    "h_ci_high",
-    "p_raw",
-    "q",
-]
+KEY_COLUMNS = {
+    "row_key",
+    "role_id",
+    "stage",
+    "dimension",
+    "group",
+    "sex",
+    "race_ethnicity",
+    "suppressed",
+    "analysis_run_id",
+    "plan_version",
+    "plan_sha256",
+}
 
 
-def true_sizes(world: InterviewWorld, by: list[str]) -> dict[tuple, int]:
-    outcomes = world.stage_outcomes.join(world.candidate_groups, on="candidate_id")
-    return {tuple(r[:-1]): r[-1] for r in outcomes.group_by(["role_id", "stage", *by]).len().iter_rows()}
-
-
-def hidden_sets_are_safe(hidden: dict[tuple, bool], sizes: dict[tuple, int], line: list[int]) -> bool:
-    """In every line, nothing is hidden, or at least two cells covering at least min_group_n people."""
-    lines: dict[tuple, list[tuple]] = {}
-    for key in hidden:
-        lines.setdefault(tuple(key[i] for i in line), []).append(key)
-    for cells in lines.values():
-        hid = [c for c in cells if hidden[c]]
-        if hid and len(hid) < len(cells) and (len(hid) < 2 or sum(sizes[c] for c in hid) < PLAN.min_group_n):
-            return False
-    return True
-
-
-def test_suppressed_rows_hide_every_value(built: Built):
+def test_hidden_rows_keep_only_their_labels(built: Built):
     with connect(built.warehouse) as conn:
-        fair = conn.execute("select * from interviews.fairness where suppressed").pl()
-        cross = conn.execute("select * from interviews.intersectional where suppressed").pl()
-    assert fair.height and cross.height
-    assert all(fair[c].null_count() == fair.height for c in FAIRNESS_VALUES)
-    assert all(cross[c].null_count() == cross.height for c in ["n", "selected", "rate", "impact_ratio"])
+        for table in ("fairness", "intersectional"):
+            hidden = conn.execute(f"select * from interviews.{table} where suppressed").pl()  # noqa: S608
+            assert hidden.height
+            values = [c for c in hidden.columns if c not in KEY_COLUMNS]
+            assert {c: hidden[c].null_count() for c in values} == dict.fromkeys(values, hidden.height), table
 
 
-def test_no_hidden_cell_can_be_recovered_by_subtraction(built: Built):
+def test_every_group_that_applied_has_a_row_at_every_stage(built: Built):
     with connect(built.warehouse) as conn:
-        fair = conn.execute(
-            'select role_id, stage, dimension, "group", suppressed from interviews.fairness'
+        counts = conn.execute(
+            'select role_id, dimension, "group", count(*) from interviews.fairness group by all'
         ).fetchall()
-        cross = conn.execute(
-            "select role_id, stage, sex, race_ethnicity, suppressed from interviews.intersectional"
+    assert counts and {c for *_, c in counts} == {len(STAGES)}
+
+
+def test_published_statistics_never_compare_against_everyone_else(built: Built):
+    with connect(built.warehouse) as conn:
+        columns = {r[0] for r in conn.execute("describe interviews.fairness").fetchall()}
+        rows = conn.execute(
+            "select f.rate, f.h, r.rate from interviews.fairness f join interviews.fairness r on "
+            "f.role_id = r.role_id and f.stage = r.stage and f.dimension = r.dimension "
+            'and r."group" = f.reference_group '
+            "where f.h is not null"
         ).fetchall()
-    sizes = {
-        **{(r, s, "sex", g): n for (r, s, g), n in true_sizes(built.world, ["sex"]).items()},
-        **{
-            (r, s, "race_ethnicity", g): n
-            for (r, s, g), n in true_sizes(built.world, ["race_ethnicity"]).items()
-        },
-    }
-    hidden = {row[:4]: row[4] for row in fair}
-    assert hidden_sets_are_safe(hidden, sizes, [0, 1, 2])  # each role, stage and dimension
-    cross_sizes = true_sizes(built.world, ["sex", "race_ethnicity"])
-    cross_hidden = {row[:4]: row[4] for row in cross}
-    assert hidden_sets_are_safe(cross_hidden, cross_sizes, [0, 1, 2])  # each sex line
-    assert hidden_sets_are_safe(cross_hidden, cross_sizes, [0, 1, 3])  # each race/ethnicity line
-    order = {stage: i for i, stage in enumerate(STAGES)}
-    for (role, stage, dim, group), is_hidden in hidden.items():
-        later = [
-            k for k in hidden if k[0] == role and k[2] == dim and k[3] == group and order[k[1]] > order[stage]
-        ]
-        assert not is_hidden or all(hidden[k] for k in later), (role, stage, dim, group)
-    assert any(row[4] for row in fair)  # the check ran on real suppression
+    assert not {"share", "p_raw", "q"} & columns
+    assert rows and all(h == pytest.approx(round(cohens_h(a, b), 2)) for a, h, b in rows)
+
+
+def test_workload_counts_are_rounded_so_they_cannot_give_stage_totals_away(built: Built):
+    with connect(built.warehouse) as conn:
+        for table in ("calibration", "panel_agreement", "process_quality"):
+            counts = [
+                r[0]
+                for r in conn.execute(f"select n from interviews.{table} where n is not null").fetchall()  # noqa: S608
+            ]
+            assert counts and all(n % TOTAL_ROUNDING == 0 for n in counts), table

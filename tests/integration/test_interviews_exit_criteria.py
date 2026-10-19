@@ -15,6 +15,8 @@ from ledgerlens.core.db import connect, ensure_audit_schema
 from ledgerlens.core.evals.golden import load_golden, run_offline_case
 from ledgerlens.core.plans import RegisteredPlan
 from ledgerlens.interviews.config import InterviewsConfig
+from ledgerlens.interviews.disclosure import Policy, RoleModel, cells_from, exposed
+from ledgerlens.interviews.fairness import impact_ratios, intersectional
 from ledgerlens.interviews.generate import InterviewWorld, generate_world, write_world
 from ledgerlens.interviews.golden import golden_cases
 from ledgerlens.interviews.pipeline import CELL_TABLES, TABLES, run_interviews
@@ -100,7 +102,7 @@ def test_only_the_non_predictive_role_is_flagged_and_process_is_clean(built: Bui
 def test_one_bh_family_covers_every_calibration_and_tested_fairness_cell(built: Built):
     [(family,)] = rows(built.warehouse, "select tests_in_family from interviews.run_meta")
     [(cal,)] = rows(built.warehouse, "select count(*) from interviews.calibration")
-    [(fair,)] = rows(built.warehouse, "select count(*) from interviews.fairness where tested")
+    [(fair,)] = rows(built.warehouse, "select fairness_tests from interviews.run_meta")
     assert family == cal + fair
     assert rows(built.warehouse, "select count(*) from interviews.calibration where q < p_raw - 1e-12") == [
         (0,)
@@ -126,6 +128,34 @@ def test_no_published_cell_is_below_the_floor(built: Built):
             built.warehouse,
             f"select count(*) from interviews.{table} where n < {PLAN.min_group_n} and not suppressed",  # noqa: S608
         ) == [(0,)]
+
+
+def test_no_small_cell_can_be_narrowed_by_a_whole_number_reader(built: Built):
+    """Re-audit the published tables: what the pipeline hid must leave every small cell protected."""
+    outcomes = built.world.stage_outcomes.join(built.world.candidate_groups, on="candidate_id")
+    fair, cross = impact_ratios(outcomes, PLAN), intersectional(outcomes, PLAN)
+    hidden = {
+        r[0]
+        for t in ("fairness", "intersectional")
+        for r in rows(built.warehouse, f"select row_key from interviews.{t} where suppressed")  # noqa: S608
+    }
+    hires = dict(
+        rows(built.warehouse, "select role_id, n from interviews.predictive_validity where n is not null")
+    )
+    policy = Policy(PLAN.min_group_n, PLAN.min_group_n)
+    for role, cells in cells_from(fair, cross).items():
+        small = sorted(c.key for c in cells if c.n < PLAN.min_group_n)
+        model = RoleModel(cells, hidden, hires.get(role), [], integral=True)
+        assert exposed(model, small, policy) == {}, role
+
+
+def test_the_audit_hides_fewer_sex_comparisons_than_the_old_neighbour_rule(built: Built):
+    [(lost,)] = rows(
+        built.warehouse,
+        "select count(distinct role_id || stage) from interviews.fairness "
+        "where suppressed and dimension = 'sex' and \"group\" in ('Female', 'Male')",
+    )
+    assert lost < 18  # the old rule hid one of Female or Male in 18 of 32 role x stage comparisons (seed 42)
 
 
 def test_tagger_agreement_is_reported_with_its_caveat(built: Built):

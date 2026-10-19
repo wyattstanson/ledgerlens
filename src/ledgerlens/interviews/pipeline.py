@@ -2,26 +2,25 @@
 
 Order: register the plan and log the run (before any compute) -> read the vault -> tag notes -> metrics and
 fairness -> one Benjamini-Hochberg family across every calibration and fairness test -> pre-registered flags
--> small-cell suppression -> write aggregates (with run id, plan version and hash) to the warehouse.
+-> small-cell suppression (a disclosure audit for the selection tables) -> write aggregates (with run id,
+plan version and hash) to the warehouse.
 """
 
-from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 import polars as pl
 
 from ledgerlens.core.db import connect
-from ledgerlens.core.guards import Funnel, suppress_small_groups
+from ledgerlens.core.guards import suppress_small_groups
 from ledgerlens.core.plans import RegisteredPlan, analysis_run, register_plan
 from ledgerlens.core.stats import benjamini_hochberg
+from ledgerlens.interviews.disclosure import TOTAL_ROUNDING, Policy, plan_hidden
 from ledgerlens.interviews.fairness import (
-    IMPACT_FUNNEL,
-    IMPACT_LINES,
-    INTERSECTIONAL_FUNNEL,
-    INTERSECTIONAL_LINES,
     impact_ratios,
     intersectional,
+    publish_impact,
+    publish_intersectional,
 )
 from ledgerlens.interviews.metrics import calibration, panel_agreement, predictive_validity, process_quality
 from ledgerlens.interviews.plan import AnalysisPlan
@@ -199,28 +198,23 @@ def run_interviews(
         tagger_rows, stale_labels = _tagger_quality(evidence, data, plan, owner_labels)
 
         floor = plan.min_group_n
+        # Hires per role are published exactly, so the audit treats them as known.
+        hires = {r: n for r, n in validity.select("role_id", "n").iter_rows() if n >= floor}
+        hidden = plan_hidden(fair, cross, hires, Policy(floor, floor))
         tables = {
-            "calibration": suppress(
-                cal, ["mean", "peer_mean", "peer_sd", "z", "d", "d_ci_low", "d_ci_high", "p_raw", "q"], floor
+            # Workload counts are rounded: exact ones would give away stage totals (ADR 0004).
+            "calibration": round_counts(
+                suppress(
+                    cal,
+                    ["mean", "peer_mean", "peer_sd", "z", "d", "d_ci_low", "d_ci_high", "p_raw", "q"],
+                    floor,
+                )
             ),
             "interviewer_flags": interviewer_flags,
-            "panel_agreement": suppress(panels, ["kappa_mean", "kappa_min"], floor),
-            "process_quality": suppress(process, ["value", "flagged"], floor),
-            # Group sizes in one stage add up to a known total, so these two also get secondary suppression.
-            "fairness": suppress(
-                fair,
-                ["selected", "rate", "share", "impact_ratio", "h", "h_ci_low", "h_ci_high", "p_raw", "q"],
-                floor,
-                lines=IMPACT_LINES,
-                funnel=IMPACT_FUNNEL,
-            ),
-            "intersectional": suppress(
-                cross,
-                ["selected", "rate", "impact_ratio"],
-                floor,
-                lines=INTERSECTIONAL_LINES,
-                funnel=INTERSECTIONAL_FUNNEL,
-            ),
+            "panel_agreement": round_counts(suppress(panels, ["kappa_mean", "kappa_min"], floor)),
+            "process_quality": round_counts(suppress(process, ["value", "flagged"], floor)),
+            "fairness": publish_impact(fair, hidden, plan),
+            "intersectional": publish_intersectional(cross, hidden, plan),
             "predictive_validity": suppress(validity, ["rho", "ci_low", "ci_high"], floor),
             "tagger_quality": tagger_rows,
         }
@@ -229,6 +223,8 @@ def run_interviews(
                 {
                     "row_key": "meta",
                     "tests_in_family": len(p_values),
+                    "fairness_tests": int(fair["tested"].sum()),
+                    "hidden_selection_cells": len(hidden),
                     "tagger": tagger.name,
                     "tagger_failures": failures,
                     "owner_labels_ignored": stale_labels,
@@ -263,21 +259,17 @@ def run_interviews(
     return registered
 
 
-def suppress(
-    frame: pl.DataFrame,
-    value_cols: list[str],
-    floor: int,
-    lines: Sequence[Sequence[str]] = (),
-    funnel: Funnel | None = None,
-) -> pl.DataFrame:
-    """Null every value (and n) for rows below the floor, and along ``lines`` for rows that would reveal
-    them by subtraction; adds ``suppressed``."""
+def suppress(frame: pl.DataFrame, value_cols: list[str], floor: int) -> pl.DataFrame:
+    """Null every value (and n) for rows below the floor; adds ``suppressed``."""
     if frame.is_empty():
         return frame.with_columns(pl.lit(False).alias("suppressed"))
-    rows = suppress_small_groups(
-        frame.to_dicts(), value_keys=value_cols, min_n=floor, lines=lines, funnel=funnel
-    )
+    rows = suppress_small_groups(frame.to_dicts(), value_keys=value_cols, min_n=floor)
     return pl.DataFrame(rows, schema=frame.schema | {"suppressed": pl.Boolean})
+
+
+def round_counts(frame: pl.DataFrame, base: int = TOTAL_ROUNDING) -> pl.DataFrame:
+    """Publish n to the nearest ``base`` (half up); suppressed rows stay null."""
+    return frame.with_columns(((pl.col("n") + base // 2) // base * base).alias("n"))
 
 
 def _tagger_quality(
