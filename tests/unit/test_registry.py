@@ -11,10 +11,10 @@ from ledgerlens.core.registry import (
     ToolNotPermittedError,
     ToolRegistry,
     authorize,
-    default_tool_registry,
     missing_tools,
 )
 from ledgerlens.core.tools import Tool, ToolContext, ToolResult
+from ledgerlens.packs import default_tool_registry
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 

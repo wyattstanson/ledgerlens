@@ -11,6 +11,7 @@ import dagster as dg
 from dagster_dbt import DbtCliResource, DbtProject, dbt_assets
 
 from ledgerlens.core.db import connect, ensure_audit_schema
+from ledgerlens.orchestration.interviews_assets import INTERVIEW_ASSETS, INTERVIEW_CHECKS
 from ledgerlens.ratecards.config import RateCardsConfig
 from ledgerlens.ratecards.generate import generate_world, write_world
 from ledgerlens.ratecards.pipeline import run_ratecards
@@ -88,7 +89,7 @@ def ratecards_pipeline() -> dg.MaterializeResult:
 
 @dg.asset_check(asset=ratecards_pipeline, description="No invoice line billed more than 2% above its card.")
 def no_billing_drift() -> dg.AssetCheckResult:
-    with connect(get_settings().db) as conn:
+    with connect(get_settings().db, read_only=True) as conn:  # checks run in parallel processes
         count, usd = conn.execute(
             "select count(*), coalesce(sum(leakage_usd), 0) from ratecards.leakage where kind = 'overbill'"
         ).fetchone() or (0, 0.0)
@@ -100,7 +101,7 @@ def no_billing_drift() -> dg.AssetCheckResult:
 
 
 defs = dg.Definitions(
-    assets=[ledgerlens_dbt_assets, ratecards_world, ratecards_pipeline],
-    asset_checks=[no_billing_drift],
+    assets=[ledgerlens_dbt_assets, ratecards_world, ratecards_pipeline, *INTERVIEW_ASSETS],
+    asset_checks=[no_billing_drift, *INTERVIEW_CHECKS],
     resources={"dbt": DbtCliResource(project_dir=dbt_project)},
 )

@@ -12,8 +12,8 @@ import pytest
 from ledgerlens.core.approvals import ApprovalQueue
 from ledgerlens.core.db import connect, ensure_audit_schema
 from ledgerlens.core.lineage import lineage_values_for_run
-from ledgerlens.core.registry import default_tool_registry
 from ledgerlens.core.tools import execute_tool
+from ledgerlens.packs import default_tool_registry
 from ledgerlens.ratecards.bridge import STEP_ORDER, STEPS
 from ledgerlens.ratecards.config import RateCardsConfig
 from ledgerlens.ratecards.drift import RATIO_EPSILON

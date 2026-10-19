@@ -19,7 +19,8 @@ from ledgerlens.core.evals.golden import (
 )
 from ledgerlens.core.lineage import NumberRef
 from ledgerlens.core.llm import LLMClient, ModelsConfig
-from ledgerlens.core.registry import AgentRegistry, AgentSpec, Mandate, default_tool_registry
+from ledgerlens.core.registry import AgentRegistry, AgentSpec, Mandate
+from ledgerlens.packs import default_tool_registry
 from ledgerlens.settings import Settings
 
 

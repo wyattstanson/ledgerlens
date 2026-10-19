@@ -7,8 +7,8 @@ import pytest
 
 from ledgerlens.core.approvals import ApprovalError, ApprovalQueue, ApprovalStatus, DecisionKind
 from ledgerlens.core.db import connect, ensure_audit_schema
-from ledgerlens.core.registry import default_tool_registry
 from ledgerlens.core.tools import execute_tool
+from ledgerlens.packs import default_tool_registry
 from ledgerlens.ratecards.benchmark import benchmarks
 from ledgerlens.ratecards.config import OptimizerConfig, RateCardsConfig, WorldConfig
 from ledgerlens.ratecards.generate import generate_world, write_world

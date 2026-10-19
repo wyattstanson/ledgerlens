@@ -26,3 +26,17 @@ agents:
     mandate: propose
     tools: [rc.tail_plan, rc.benchmark, rc.vendor_rates]
     max_tool_calls: 8
+
+  - id: interviews.observatory
+    owner: talent
+    model_task: pack_agent
+    mandate: read_only
+    tools: [iv.plan_status, iv.calibration, iv.interviewer_flags, iv.panel_agreement, iv.process_quality,
+            iv.impact_ratios, iv.predictive_validity, iv.tagger_quality]
+    max_tool_calls: 8
+  - id: interviews.audit_drafter
+    owner: legal_and_talent
+    model_task: narrative
+    mandate: propose
+    tools: [iv.plan_status, iv.impact_ratios, iv.export_compliance_pack]
+    max_tool_calls: 8

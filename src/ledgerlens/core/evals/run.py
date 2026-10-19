@@ -23,7 +23,7 @@ from ledgerlens.core.evals.golden import (
     summarize,
 )
 from ledgerlens.core.llm import LLMClient, ModelsConfig
-from ledgerlens.core.registry import AgentRegistry, default_tool_registry
+from ledgerlens.core.registry import AgentRegistry
 from ledgerlens.settings import REPO_ROOT, get_settings
 
 DEFAULT_GOLDEN_DIR = REPO_ROOT / "tests" / "evals" / "golden"
@@ -46,6 +46,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0 if args.allow_empty else 1
 
     ensure_audit_schema(db_path)
+    from ledgerlens.packs import default_tool_registry  # noqa: PLC0415 (composition root)
+
     tools = default_tool_registry()
     if args.suite == "offline":
         results = [run_offline_case(c, tools=tools, db_path=db_path) for c in cases]

@@ -11,7 +11,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-from ledgerlens.core.tools import CORE_TOOLS, Tool
+from ledgerlens.core.tools import Tool
 
 
 class Mandate(StrEnum):
@@ -110,10 +110,3 @@ def authorize(agent: AgentSpec, tool: Tool) -> Decision:
             return Decision.PROPOSE
         case Mandate.WRITE_WITH_APPROVAL:
             return Decision.EXECUTE_IF_APPROVED
-
-
-def default_tool_registry() -> ToolRegistry:
-    """Every tool shipped with LedgerLens. Packs append theirs here as they land."""
-    from ledgerlens.ratecards.tools import RATECARD_TOOLS  # noqa: PLC0415 (packs import core; avoid a cycle)
-
-    return ToolRegistry((*CORE_TOOLS, *RATECARD_TOOLS))

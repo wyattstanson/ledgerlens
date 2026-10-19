@@ -15,7 +15,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from ledgerlens.core.db import connect, ensure_audit_schema, utcnow
 from ledgerlens.core.lineage import new_id
-from ledgerlens.core.registry import ToolRegistry, default_tool_registry
+from ledgerlens.core.registry import ToolRegistry
 from ledgerlens.core.tools import Tool, ToolInputError, execute_tool
 from ledgerlens.settings import get_settings
 
@@ -82,6 +82,8 @@ def build_server(tools: ToolRegistry, db_path: Path) -> MCPServer:
 def main() -> None:
     settings = get_settings()
     ensure_audit_schema(settings.db)
+    from ledgerlens.packs import default_tool_registry  # noqa: PLC0415 (composition root)
+
     build_server(default_tool_registry(), settings.db).run(transport="stdio")
 
 
