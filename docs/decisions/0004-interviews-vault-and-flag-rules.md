@@ -54,6 +54,8 @@ cells.
      allow-list.
    Cost: sex has only three categories, so when "Unknown" has fewer than 5 people one of Female or Male is
    also hidden (18 of 32 role x stage comparisons in the seed-42 world). The planted cell stays visible.
+   The owner chose to keep this strict rule (2026-10-19) rather than exempt "Unknown" from the floor, with
+   a full disclosure audit planned to win the hidden comparisons back safely (see Planned).
 7. **The generic DuckDB MCP server is locked down.** `.mcp.json` starts it with
    `SET enable_external_access=false; SET lock_configuration=true`, so a client can query the warehouse
    but cannot `ATTACH` the vault or read files such as the spot-check sheet (verified against
@@ -67,3 +69,15 @@ cells.
   Phase 5 authorization question.
 - Suppression is checked against the additive relations listed above, not by a full linear disclosure
   audit across every published number.
+
+## Planned: full disclosure audit
+
+Replace "always hide the smallest visible neighbour" with an audit of what the published numbers actually
+determine. Treat every hidden count (n and selected, per one-way and intersectional cell) as an unknown,
+and write down every relation a reader has: each line sums to its total, a group's n at one stage equals
+its selected count at the stage before, intersectional lines sum to the one-way cells, and the hires per
+role in predictive validity. A hidden cell is disclosed if those relations pin it to one value or to an
+interval narrower than the floor; nonnegativity matters, so this is a small linear program per role, not
+just a rank check. Hide an extra cell only when the audit finds a disclosure, choosing the cell that costs
+the least. Done when the privacy test runs the audit against the generator's truth on three seeds, finds
+no disclosed cell, and the number of hidden Female or Male comparisons falls below today's 18 of 32.
