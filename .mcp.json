@@ -9,7 +9,12 @@
     "duckdb": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["mcp-server-motherduck@1.1.0", "--db-path", "${CLAUDE_PROJECT_DIR:-.}/data/warehouse.duckdb", "--ephemeral-connections"]
+      "args": [
+        "mcp-server-motherduck@1.1.0",
+        "--db-path", "${CLAUDE_PROJECT_DIR:-.}/data/warehouse.duckdb",
+        "--ephemeral-connections",
+        "--init-sql", "SET enable_external_access=false; SET lock_configuration=true"
+      ]
     }
   }
 }
