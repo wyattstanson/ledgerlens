@@ -1,0 +1,14 @@
+# Interview Quality and Fairness Observatory: synthetic world (BUILD_PROMPT 11.1). All values are assumptions.
+world:
+  interviewers: 50
+  candidates: 2000
+  planted_role_share: 0.25
+  panels_per_role: 3
+  pass_rates: { screen: 0.75, technical: 0.70, onsite: 0.65, hiring_manager: 0.80 }
+  rating_noise: 0.22 # structured rubric: low rater noise
+  lenient_shift: 0.8
+  adverse_keep_rate: 0.65
+  evidence_rate_range: [0.88, 0.97]
+
+tagger:
+  kind: rules # rules (offline, default) | claude (needs ANTHROPIC_API_KEY)

@@ -1,0 +1,36 @@
+# Pre-registered interview analysis plan (BUILD_PROMPT 11.2, ADR 0004). Hashed and logged before every run;
+# any change creates a new version. Floors cannot be loosened: min_group_n >= 5, min_group_share >= 0.02.
+name: interviews
+seed: 20261019
+alpha: 0.05 # Benjamini-Hochberg FDR across every calibration and fairness test in a run
+bootstrap_resamples: 1000
+min_group_n: 5
+min_group_share: 0.02 # groups below this share are excluded from impact ratios, with a note
+
+calibration:
+  min_n: 10 # ratings per interviewer x role x competency cell
+  z_threshold: 1.5 # against the spread of peer interviewers' means (leave-one-out)
+  min_effect_d: 0.5 # practically meaningful shift; filters chance findings in large cells
+  min_flagged_cells: 2 # an interviewer is flagged when this many cells in one role are flagged
+
+panel_agreement:
+  kappa_threshold: 0.4 # mean Fleiss' kappa across competencies
+  min_candidates: 15
+
+process:
+  rubric_coverage_min: 0.80
+  evidence_quality_min: 0.70
+  loop_coverage_min: 0.90
+
+fairness:
+  impact_ratio_threshold: 0.80
+  min_test_n: 30 # both the group and the reference group
+  dimensions: [sex, race_ethnicity]
+
+predictive_validity:
+  min_n: 30
+
+tagger:
+  kappa_target: 0.7
+  eval_sample: 200
+  spot_check_size: 50

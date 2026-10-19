@@ -20,4 +20,5 @@ jobs:
       # for the human title reviewer using the hidden truth (audited as simulated); demo and evals only.
       - run: uv run python -m ledgerlens.cli generate --seed 42
       - run: uv run python -m ledgerlens.cli pipeline ratecards --simulate-review
+      - run: uv run python -m ledgerlens.cli pipeline interviews
       - run: uv run python -m ledgerlens.core.evals.run --suite offline

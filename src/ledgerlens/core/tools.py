@@ -37,6 +37,10 @@ class ToolInputError(ValueError):
     """The model (or a client) sent arguments that fail the tool's input model."""
 
 
+class OutputBlockedError(RuntimeError):
+    """A tool's output guard refused its result; nothing is returned to the caller."""
+
+
 @dataclass
 class ToolContext:
     db_path: Path
@@ -89,6 +93,8 @@ class Tool:
     writes: bool = False
     # For write tools: state captured when the change is proposed, stored with the approval request.
     snapshot: Callable[[Path], dict[str, Any]] | None = None
+    # Runs on every result before it leaves execute_tool; raise to block it (e.g. person-level data).
+    output_guard: Callable[[ToolResult], None] | None = None
     _schema: dict[str, Any] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -157,6 +163,15 @@ def execute_tool(tool: Tool, raw_input: Mapping[str, Any], *, db_path: Path, age
     except Exception:
         finish("error")
         raise
+    if tool.output_guard is not None:
+        try:
+            tool.output_guard(result)
+        except Exception as exc:
+            # The tool body already recorded lineage for its numbers; a blocked result leaves none behind.
+            with connect(db_path) as conn:
+                conn.execute("delete from audit.lineage where tool_call_id = ?", [tool_call_id])
+            finish("blocked")
+            raise OutputBlockedError(f"{tool.name}: result blocked by its output guard ({exc})") from exc
     finish("ok", sha256_text(result.model_dump_json()))
     return result
 

@@ -18,6 +18,6 @@ def test_cli_honours_an_explicit_seed_of_zero(monkeypatch: pytest.MonkeyPatch, t
     monkeypatch.setattr(cli, "get_settings", lambda: settings)
     small = RateCardsConfig(world=WorldConfig(vendors=8, months=14, duplicate_lines=0, distinct_titles=64))
     monkeypatch.setattr(cli.RateCardsConfig, "from_yaml", classmethod(lambda cls, path: small))
-    assert cli.main(["generate", "--seed", "0"]) == 0
+    assert cli.main(["generate", "--pack", "ratecards", "--seed", "0"]) == 0
     with connect(settings.db) as conn:
         assert conn.execute("select seed from raw_ratecards.world_meta").fetchone() == (0,)

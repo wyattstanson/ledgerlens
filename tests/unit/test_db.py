@@ -2,7 +2,15 @@ from pathlib import Path
 
 from ledgerlens.core.db import connect, ensure_audit_schema
 
-AUDIT_TABLES = {"agent_runs", "tool_calls", "lineage", "llm_calls", "approvals", "analysis_plans"}
+AUDIT_TABLES = {
+    "agent_runs",
+    "tool_calls",
+    "lineage",
+    "llm_calls",
+    "approvals",
+    "analysis_plans",
+    "analysis_runs",
+}
 
 
 def test_audit_schema_has_every_table_and_is_idempotent(db: Path):

@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="LEDGERLENS_", toml_file=SETTINGS_TOML, extra="ignore")
 
     db: Path = Path("data/warehouse.duckdb")
+    # Person-level interview data and group attributes (ADR 0004). Never exposed to tools, agents or MCP.
+    restricted_db: Path = Path("data/vault.duckdb")  # file name must differ from its "restricted" schema
     dbt_project_dir: Path = Path("transform")
     config_dir: Path = Path("config")
     seed: int = 42
@@ -30,7 +32,7 @@ class Settings(BaseSettings):
         default=None, validation_alias=AliasChoices("ANTHROPIC_API_KEY", "LEDGERLENS_ANTHROPIC_API_KEY")
     )
 
-    @field_validator("db", "dbt_project_dir", "config_dir")
+    @field_validator("db", "restricted_db", "dbt_project_dir", "config_dir")
     @classmethod
     def _resolve_against_repo(cls, value: Path) -> Path:
         return value if value.is_absolute() else (REPO_ROOT / value).resolve()

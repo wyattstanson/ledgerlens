@@ -1,8 +1,10 @@
 """LedgerLens command line.
 
-python -m ledgerlens.cli generate --seed 42             # write the synthetic world(s) to the warehouse
+python -m ledgerlens.cli generate [--pack ratecards|interviews|all] [--seed 42]
 python -m ledgerlens.cli pipeline ratecards [--simulate-review]
-python -m ledgerlens.cli golden ratecards --seed 42     # regenerate tests/evals/golden/ratecards.jsonl
+python -m ledgerlens.cli pipeline interviews
+python -m ledgerlens.cli golden ratecards|interviews [--seed 42]
+python -m ledgerlens.cli spotcheck interviews        # writes the blind 50-note labelling sheet
 """
 
 import argparse
@@ -11,59 +13,110 @@ from collections.abc import Sequence
 
 from ledgerlens.core.approvals import ApprovalQueue
 from ledgerlens.core.db import ensure_audit_schema
+from ledgerlens.core.llm import LLMClient, ModelsConfig
+from ledgerlens.interviews import generate as iv_generate
+from ledgerlens.interviews import golden as iv_golden
+from ledgerlens.interviews.config import InterviewsConfig
+from ledgerlens.interviews.pipeline import run_interviews, spot_check_notes
+from ledgerlens.interviews.plan import AnalysisPlan
+from ledgerlens.interviews.tagger import (
+    ClaudeTagger,
+    EvidenceTagger,
+    RuleTagger,
+    read_owner_labels,
+    write_spot_check,
+)
+from ledgerlens.ratecards import generate as rc_generate
 from ledgerlens.ratecards.config import RateCardsConfig
-from ledgerlens.ratecards.generate import generate_world, write_world
 from ledgerlens.ratecards.golden import golden_cases, write_golden
 from ledgerlens.ratecards.mapping import simulate_review_from_truth
 from ledgerlens.ratecards.pipeline import run_ratecards
-from ledgerlens.settings import REPO_ROOT, get_settings
+from ledgerlens.settings import REPO_ROOT, Settings, get_settings
 
-GOLDEN_RATECARDS = REPO_ROOT / "tests" / "evals" / "golden" / "ratecards.jsonl"
+GOLDEN_DIR = REPO_ROOT / "tests" / "evals" / "golden"
+SPOT_CHECK = REPO_ROOT / "data" / "spot_check_50.csv"
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def _tagger(settings: Settings, config: InterviewsConfig) -> EvidenceTagger:
+    if config.tagger.kind == "claude":
+        if settings.anthropic_api_key is None:
+            raise SystemExit("tagger.kind is 'claude' but ANTHROPIC_API_KEY is not set")
+        models = ModelsConfig.from_yaml(settings.config_dir / "models.yaml")
+        return ClaudeTagger(LLMClient(models, settings.db, api_key=settings.anthropic_api_key))
+    return RuleTagger()
+
+
+def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 (one dispatcher)
     parser = argparse.ArgumentParser(prog="ledgerlens")
     sub = parser.add_subparsers(dest="command", required=True)
-    gen = sub.add_parser("generate", help="write synthetic data to the warehouse")
+    gen = sub.add_parser(
+        "generate", help="write synthetic data (warehouse; interview person data to the vault)"
+    )
+    gen.add_argument("--pack", choices=["ratecards", "interviews", "all"], default="all")
     gen.add_argument("--seed", type=int, default=None)
     pipe = sub.add_parser("pipeline", help="run a pack's compute steps")
-    pipe.add_argument("pack", choices=["ratecards"])
+    pipe.add_argument("pack", choices=["ratecards", "interviews"])
     pipe.add_argument(
         "--simulate-review",
         action="store_true",
-        help="demo/evals only: resolve pending title reviews from the hidden truth, audited as simulated",
+        help=(
+            "rate cards, demo/evals only: resolve pending title reviews from the hidden truth "
+            "(audited as simulated)"
+        ),
     )
     gold = sub.add_parser("golden", help="regenerate a pack's golden eval set from generator truth")
-    gold.add_argument("pack", choices=["ratecards"])
+    gold.add_argument("pack", choices=["ratecards", "interviews"])
     gold.add_argument("--seed", type=int, default=None)
+    spot = sub.add_parser("spotcheck", help="write the blind tagger spot-check sheet for a human to label")
+    spot.add_argument("pack", choices=["interviews"])
     args = parser.parse_args(argv)
 
     settings = get_settings()
-    config = RateCardsConfig.from_yaml(settings.config_dir / "ratecards.yaml")
+    rc_config = RateCardsConfig.from_yaml(settings.config_dir / "ratecards.yaml")
+    iv_config = InterviewsConfig.from_yaml(settings.config_dir / "interviews.yaml")
+    plan = AnalysisPlan.from_yaml(settings.config_dir / "analysis_plan.yaml")
     seed = settings.seed if getattr(args, "seed", None) is None else args.seed
+    ensure_audit_schema(settings.db)
+
     if args.command == "generate":
-        ensure_audit_schema(settings.db)
-        world = generate_world(config.world, seed)
-        write_world(settings.db, world)
-        print(
-            f"ratecards: {world.invoice_lines.height} invoice lines, {world.vendors.height} vendors"
-            f" -> {settings.db}"
-        )
-    elif args.command == "pipeline":
-        ensure_audit_schema(settings.db)
-        solution = run_ratecards(settings.db, config)
+        if args.pack in ("ratecards", "all"):
+            world = rc_generate.generate_world(rc_config.world, seed)
+            rc_generate.write_world(settings.db, world)
+            print(f"ratecards: {world.invoice_lines.height} invoice lines, {world.vendors.height} vendors")
+        if args.pack in ("interviews", "all"):
+            iv_world = iv_generate.generate_world(iv_config.world, seed)
+            iv_generate.write_world(settings.db, settings.restricted_db, iv_world)
+            print(f"interviews: {iv_world.ratings.height} ratings; person data -> {settings.restricted_db}")
+    elif args.command == "pipeline" and args.pack == "ratecards":
+        solution = run_ratecards(settings.db, rc_config)
         if args.simulate_review:
             reviewed = simulate_review_from_truth(settings.db, ApprovalQueue(settings.db))
             print(f"simulated review of {reviewed} titles")
-            solution = run_ratecards(settings.db, config)
-        status = (
-            "infeasible (see ratecards.panel_meta)" if solution is None else json.dumps(list(solution.kept))
+            solution = run_ratecards(settings.db, rc_config)
+        if solution is None:
+            print("panel: infeasible (see ratecards.panel_meta)")
+        else:
+            print(f"panel: {json.dumps(list(solution.kept))}")
+    elif args.command == "pipeline":
+        registered = run_interviews(
+            settings.db, settings.restricted_db, plan, _tagger(settings, iv_config), owner_labels=SPOT_CHECK
         )
-        print(f"panel: {status}")
+        print(f"interviews: plan v{registered.version} ({registered.sha256[:12]}) registered and run")
+    elif args.command == "golden":
+        if args.pack == "ratecards":
+            cases = golden_cases(rc_generate.generate_world(rc_config.world, seed), rc_config)
+        else:
+            cases = iv_golden.golden_cases(iv_generate.generate_world(iv_config.world, seed), plan)
+        path = GOLDEN_DIR / f"{args.pack}.jsonl"
+        write_golden(cases, path)
+        print(f"{len(cases)} golden cases -> {path}")
     else:
-        cases = golden_cases(generate_world(config.world, seed), config)
-        write_golden(cases, GOLDEN_RATECARDS)
-        print(f"{len(cases)} golden cases -> {GOLDEN_RATECARDS}")
+        if read_owner_labels(SPOT_CHECK):
+            raise SystemExit(f"{SPOT_CHECK} already has your labels; move it before writing a new sheet")
+        notes = spot_check_notes(settings.restricted_db, plan)
+        write_spot_check(SPOT_CHECK, notes)
+        print(f"{len(notes)} notes -> {SPOT_CHECK}.")
+        print("Fill owner_has_evidence with yes/no, then rerun `pipeline interviews`.")
     return 0
 
 

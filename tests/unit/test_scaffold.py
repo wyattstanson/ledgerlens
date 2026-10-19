@@ -31,6 +31,9 @@ def test_dagster_definitions_load_dbt_assets(dbt_manifest: Path):
     asset_keys = {key.to_user_string() for key in defs.resolve_asset_graph().get_all_asset_keys()}
     # dagster-dbt prefixes asset keys with the model's custom schema (+schema: core).
     assert "core/core_project_info" in asset_keys
+    assert {"interviews_world", "interviews_pipeline"} <= asset_keys
+    check_names = {key.name for key in defs.resolve_asset_graph().asset_check_keys}
+    assert {"no_billing_drift", "plan_hash_logged", "no_small_cells"} <= check_names
     assert isinstance(defs, dg.Definitions)
 
 
