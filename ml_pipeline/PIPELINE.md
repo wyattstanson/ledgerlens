@@ -11,11 +11,11 @@ Workbench: marimo notebooks in this folder; figures in `figures/`; profile in `d
 | 1 | Data inspection | approved-gate | see Step 1 below |
 | 2 | Exploratory data analysis | approved-gate | see Step 2 below |
 | 3 | Define the prediction problem | approved-gate | contract below |
-| 4 | Data cleaning | done | Rules (before -> after): monthly rows, open month dropped: 360 -> 350; weekly weeks, partial or open-month weeks dropped: 158 -> 152; missing values: 0 -> 0; claim-size spikes flagged and kept (training months): 2 -> 2. Nothing imputed or deleted otherwise; spikes kept. |
-| 5 | Data engineering | done | 12 series (10 monthly, 2 weekly), one row per series and period; no gaps, duplicates, non-positive or missing values. |
-| 6 | Train / validation / test split | done | Chronological split at 2026-03-01 with guard.split: 542 training rows, 112 test rows (6-26 per series), test fingerprint frozen in .guard_state.json; no validation slice (rolling-origin CV inside training). |
-| 7 | Feature engineering | done | No engineered features: univariate models; season lengths 12 (monthly) and 52 (weekly). |
-| 8 | Preprocessing | done | series.to_statsforecast: 10 monthly series x 29 months, 2 weekly series x 126 weeks; no scaling, encoding or imputation. |
+| 4 | Data cleaning | approved-gate | Rules (before -> after): monthly rows, open month dropped: 360 -> 350; weekly weeks, partial or open-month weeks dropped: 158 -> 152; missing values: 0 -> 0; claim-size spikes flagged and kept (training months): 2 -> 2. Nothing imputed or deleted otherwise; spikes kept. |
+| 5 | Data engineering | approved-gate | 12 series (10 monthly, 2 weekly), one row per series and period; no gaps, duplicates, non-positive or missing values. |
+| 6 | Train / validation / test split | approved-gate | Chronological split at 2026-03-01 with guard.split: 542 training rows, 112 test rows (6-26 per series), test fingerprint frozen in .guard_state.json; no validation slice (rolling-origin CV inside training). |
+| 7 | Feature engineering | approved-gate | No engineered features: univariate models; season lengths 12 (monthly) and 52 (weekly). |
+| 8 | Preprocessing | approved-gate | series.to_statsforecast: 10 monthly series x 29 months, 2 weekly series x 126 weeks; no scaling, encoding or imputation. |
 | 9 | Baseline model | todo | |
 | 10 | Model training | todo | |
 | 11 | Hyperparameter tuning | todo | |
@@ -28,7 +28,7 @@ Workbench: marimo notebooks in this folder; figures in `figures/`; profile in `d
 ## Phase reviews
 
 - Gate A: approved 2026-10-23
-- Gate B: pending
+- Gate B: approved 2026-10-23
 - Gate C: pending
 - Gate D: pending
 
