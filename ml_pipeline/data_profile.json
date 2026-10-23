@@ -1,0 +1,76 @@
+{
+  "schema_version": "1",
+  "created": "2026-10-23",
+  "shape": {
+    "n_rows": 350,
+    "n_cols": 3,
+    "memory_mb": 0.03,
+    "sampled": false,
+    "sample_rows": null
+  },
+  "target": {
+    "name": "value",
+    "task": "regression",
+    "n_classes": null,
+    "class_balance": null,
+    "minority_frac": null
+  },
+  "columns": {
+    "month": {
+      "kind": "datetime",
+      "missing_frac": 0.0,
+      "n_unique": 35,
+      "unique_frac": 0.1,
+      "start": "2023-10-01",
+      "end": "2026-08-01"
+    },
+    "series": {
+      "kind": "categorical",
+      "missing_frac": 0.0,
+      "n_unique": 10,
+      "unique_frac": 0.0286,
+      "n_levels": 10,
+      "top": {
+        "approved_claims|homeowners": 0.1,
+        "approved_claims|personal_auto": 0.1,
+        "approved_claims|small_commercial": 0.1,
+        "due_premium|homeowners": 0.1,
+        "due_premium|personal_auto": 0.1
+      }
+    },
+    "value": {
+      "kind": "numeric",
+      "missing_frac": 0.0,
+      "n_unique": 306,
+      "unique_frac": 0.8743,
+      "min": 6.0,
+      "median": 17860.6285,
+      "max": 1605344.22,
+      "skew": 0.617,
+      "outlier_frac": 0.0
+    }
+  },
+  "duplicates": {
+    "exact_row_frac": 0.0
+  },
+  "constant_columns": [],
+  "high_cardinality_categoricals": [],
+  "datetime_columns": [
+    "month"
+  ],
+  "time_col": "month",
+  "group_col": null,
+  "entity_candidates": [],
+  "leakage_suspects": [],
+  "traits": {
+    "n_rows": 350,
+    "n_features": 2,
+    "task": "regression",
+    "minority_frac": null,
+    "has_datetime": true,
+    "has_groups": false,
+    "small_data": true,
+    "imbalanced": false,
+    "high_card_categoricals": []
+  }
+}
