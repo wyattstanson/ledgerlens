@@ -39,6 +39,7 @@ class AgentSpec(BaseModel):
     mandate: Mandate
     tools: tuple[str, ...]
     max_tool_calls: int = Field(default=8, ge=1, le=50)
+    brief: str = ""  # pack-specific answer rules, appended to the shared system prompt
 
 
 class ToolRegistry:
