@@ -1,0 +1,21 @@
+version: 2
+
+# Written by fpa/generate.py (the Dagster asset fpa_world); dagster-dbt keys these as raw_fpa/<table>.
+sources:
+  - name: raw_fpa
+    description: Synthetic insurer payments feed, policies, claims and a NetSuite-shaped ledger (ADR 0001).
+    schema: raw_fpa
+    tables:
+      - name: payment_events
+      - name: instalments
+      - name: claims
+      - name: payouts
+      - name: opex
+      - name: transaction
+        quoting: { identifier: true } # a reserved word in SQL
+      - name: transactionline
+      - name: account
+      - name: accountingperiod
+      - name: plan_premium
+      - name: plan_claims
+      - name: plan_opex
