@@ -11,11 +11,11 @@ Workbench: marimo notebooks in this folder; figures in `figures/`; profile in `d
 | 1 | Data inspection | approved-gate | see Step 1 below |
 | 2 | Exploratory data analysis | approved-gate | see Step 2 below |
 | 3 | Define the prediction problem | approved-gate | contract below |
-| 4 | Data cleaning | todo | |
-| 5 | Data engineering | todo | |
-| 6 | Train / validation / test split | todo | |
-| 7 | Feature engineering | todo | |
-| 8 | Preprocessing | todo | |
+| 4 | Data cleaning | done | Rules (before -> after): monthly rows, open month dropped: 360 -> 350; weekly weeks, partial or open-month weeks dropped: 158 -> 152; missing values: 0 -> 0; claim-size spikes flagged and kept (training months): 2 -> 2. Nothing imputed or deleted otherwise; spikes kept. |
+| 5 | Data engineering | done | 12 series (10 monthly, 2 weekly), one row per series and period; no gaps, duplicates, non-positive or missing values. |
+| 6 | Train / validation / test split | done | Chronological split at 2026-03-01 with guard.split: 542 training rows, 112 test rows (6-26 per series), test fingerprint frozen in .guard_state.json; no validation slice (rolling-origin CV inside training). |
+| 7 | Feature engineering | done | No engineered features: univariate models; season lengths 12 (monthly) and 52 (weekly). |
+| 8 | Preprocessing | done | series.to_statsforecast: 10 monthly series x 29 months, 2 weekly series x 126 weeks; no scaling, encoding or imputation. |
 | 9 | Baseline model | todo | |
 | 10 | Model training | todo | |
 | 11 | Hyperparameter tuning | todo | |
@@ -60,6 +60,18 @@ Accepted by the owner with Gate A (as written in `01_eda.py`):
   baseline is used and the report says so.
 - Constraints: about 29 training months per series, so models stay small; level shifts are reported.
 
+## Steps 4-8: preparation (for the Gate B review)
+
+Written by `02_prep.py`; the per-step results are in the table above. The split is chronological at
+2026-03-01 for every series, monthly and weekly alike, and the guard froze the test rows' fingerprint.
+
+Model rationale:
+- traits: univariate time-series regression; 10 monthly series x 29 training months (small data) and 2 weekly series x 126 training weeks; has_datetime; no groups (each series is forecast on its own); two claim-size spikes kept as real losses
+- baseline: SeasonalNaive(12) for the monthly series and SeasonalNaive(52) for the weekly series, the contract's line to beat
+- candidates: AutoETS and AutoARIMA from statsforecast, chosen per series by rolling-origin cross-validation inside the training rows (3 windows; monthly h=6 with origins 3 months apart, weekly h=13 with origins 13 weeks apart); weekly AutoETS is non-seasonal because statsforecast's ETS supports seasons of at most 24 periods, and AutoARIMA skips seasonal differencing in folds of 24 months or fewer
+- ruled out: gradient boosting on lag features and neural nets (29 points per monthly series is too little); random or k-fold splits (temporal data); external regressors (they would need forecasts of their own); removing or capping the claim-size spikes (they are real losses)
+- metric: MASE with a seasonal scale from each fold's training rows (primary), over horizons 1-3 and 1-6 months and 1-13 weeks; MAPE secondary; 80% and 95% interval coverage reported; a candidate replaces the baseline on a series only if its cross-validated MASE is lower
+
 ## Figures
 - Figure 01_missingness.png: No column has missing values.
 - Figure 02_target_balance.png: value ranges 6 to 1.61e+06 with median 1.79e+04; a mean-predictor baseline is the number to beat.
@@ -68,3 +80,5 @@ Accepted by the owner with Gate A (as written in `01_eda.py`):
 - Figure 02_seasonal_profile.png: Average month-of-year index per series. Strongest seasonality: severity|homeowners (peak-to-trough 98%), then severity|small_commercial (85%); weakest opex|all (8%). With under three years of history each calendar month is seen two or three times, so SeasonalNaive(12) is a fair but noisy baseline.
 - Figure 02_autocorrelation.png: Autocorrelation at lags 1-13; dashed lines are the 95% noise band (0.33). 2 of 10 series are significant at lag 12 (approved_claims|homeowners, approved_claims|personal_auto). Strong lag-1 autocorrelation with slow decay means trend or level shifts, which ETS handles with a trend term and ARIMA with differencing.
 - Figure 02_weekly_cash.png: 158 weeks from 2023-09-25 to 2026-09-28. The first and last weeks are partial (the window starts mid-week and the last month is still open), so they are dropped before modelling. Week-to-week variation: premium 7% of its mean, claims 39%; claims are lumpier because a few large losses dominate a week, so their 13-week intervals will be wider.
+- Figure 04_cleaning.png: Top: 6 of 158 weeks are dropped because they are partial or fall in the open month; 152 complete weeks remain. Bottom: claim size has 2 spikes above a robust z of 5 in the training months (homeowners 2025-11 (z=10.6), homeowners 2026-01 (z=5.2)). They are real large losses, so they stay in the data; the model choice must cope with them.
+- Figure 06_split.png: Blue is training, red is the frozen test set from 2026-03-01: 542 training rows and 112 test rows (6-26 per series). The test rows are fingerprinted by the guard and are touched once, at step 14.

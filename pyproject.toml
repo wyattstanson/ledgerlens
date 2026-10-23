@@ -66,8 +66,8 @@ max-args = 10
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "PLR2004", "S603", "S607", "S311"]
-# marimo notebooks: prose in f-strings, one long cell per figure, asserts as data checks
-"ml_pipeline/*.py" = ["E501", "S101", "PLR0915", "PLR2004", "PLC0415"]
+# marimo notebooks: prose in f-strings, in-cell imports, last-expression display, asserts as data checks
+"ml_pipeline/*.py" = ["E501", "S101", "PLR0915", "PLR2004", "PLC0415", "B018", "PLR1711"]
 
 [tool.pyright]
 typeCheckingMode = "standard"
