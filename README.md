@@ -12,7 +12,8 @@ Governed analytics agents for three domains, sharing one core:
 The language model plans and explains. Deterministic code produces every number, and every number
 carries lineage to the query and rows behind it. All data is synthetic.
 
-Status: Phase 3 of 6 (rate cards and interviews built; FP&A, web UI and polish to come). The full
+Status: Phase 4 of 6 (rate cards, interviews and FP&A built; FP&A forecasting waits on its first review gate;
+web UI and polish to come). The full
 specification is in [docs/BUILD_PROMPT.md](docs/BUILD_PROMPT.md); design decisions are in
 [docs/decisions](docs/decisions).
 
@@ -37,8 +38,16 @@ Everything runs offline; no API key is needed.
 uv run python -m ledgerlens.cli generate --seed 42
 uv run python -m ledgerlens.cli pipeline ratecards --simulate-review
 uv run python -m ledgerlens.cli pipeline interviews
+uv run python -m ledgerlens.cli pipeline fpa
 uv run python -m ledgerlens.core.evals.run --suite offline
 ```
+
+The FP&A pipeline builds the dbt marts first (the ledger must reconcile to the payments feed every month, and
+debits must equal credits), then the driver tree, volume/mix/rate/timing bridges for every month and fiscal
+year to date, ADR 0001 materiality flags and the check-to-instant scenario
+([ADR 0005](docs/decisions/0005-fpa-bridge-materiality-and-ledger-guard.md)). Forecasting goes through the
+ml-pipeline workbench in [ml_pipeline/](ml_pipeline/PIPELINE.md): `uv run python ml_pipeline/01_eda.py`
+redraws the exploration figures, and no model is fitted until each review gate is approved.
 
 Interview data about people (candidates, ratings, notes, group attributes) is written only to
 `data/vault.duckdb`. The warehouse and every tool see aggregates, and cells under five people are
