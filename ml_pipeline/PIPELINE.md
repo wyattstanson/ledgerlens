@@ -8,9 +8,9 @@ Workbench: marimo notebooks in this folder; figures in `figures/`; profile in `d
 
 | # | Step | Status | Result |
 |---|------|--------|--------|
-| 1 | Data inspection | done | see Step 1 below |
-| 2 | Exploratory data analysis | done | see Step 2 below |
-| 3 | Define the prediction problem | done | contract below, for review |
+| 1 | Data inspection | approved-gate | see Step 1 below |
+| 2 | Exploratory data analysis | approved-gate | see Step 2 below |
+| 3 | Define the prediction problem | approved-gate | contract below |
 | 4 | Data cleaning | todo | |
 | 5 | Data engineering | todo | |
 | 6 | Train / validation / test split | todo | |
@@ -27,7 +27,7 @@ Workbench: marimo notebooks in this folder; figures in `figures/`; profile in `d
 
 ## Phase reviews
 
-- Gate A: pending
+- Gate A: approved 2026-10-23
 - Gate B: pending
 - Gate C: pending
 - Gate D: pending
@@ -42,7 +42,23 @@ Profiled 350 rows: 10 monthly driver series x 35 closed months (to 2026-08; 2026
 
 ## Step 3: prediction problem (contract)
 
-See the contract in 01_eda.py, reproduced in the Gate A summary.
+Accepted by the owner with Gate A (as written in `01_eda.py`):
+
+- Targets, one model choice per series: monthly `due_premium` (USD billed), `approved_claims` (count) and
+  `severity` (USD per approved claim) for each of the three lines, and company `opex` (USD): 10 series.
+  Collections, claims paid, LAE and net cash are rebuilt from these through the driver tree.
+- 13-week cash: weekly premium collected and claims paid (net of returns), partial weeks dropped.
+- Prediction unit and time: one series at one forecast origin, the latest closed month (weekly: the latest
+  complete week). Only data up to the origin is used; the open month never is.
+- Horizons: 3 and 6 months; 13 weeks.
+- Metric: MASE against the seasonal naive forecast (primary), MAPE (secondary). Intervals at 80% and 95%,
+  checked for coverage.
+- Validation: the last 6 closed months are the frozen test set, touched once at step 14. Model choice uses
+  rolling-origin cross-validation (3 windows) inside the earlier months only.
+- Baseline SeasonalNaive(12) (weekly: seasonal naive 52, or last value if a year of complete weeks is not
+  left after the split); candidates AutoETS and AutoARIMA. If none beats the baseline on a series, the
+  baseline is used and the report says so.
+- Constraints: about 29 training months per series, so models stay small; level shifts are reported.
 
 ## Figures
 - Figure 01_missingness.png: No column has missing values.

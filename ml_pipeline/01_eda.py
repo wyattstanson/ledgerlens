@@ -319,12 +319,8 @@ def _(HERE, big, drift, lag12, latest_closed, open_period, profile, series, shif
         "is the noisiest driver, so its baseline may be hard to beat; (3) opex is close to flat, so a naive model "
         "may win there."
     )
-    step3 = "See the contract in 01_eda.py, reproduced in the Gate A summary."
-    for header, body in (
-        ("## Step 1: data inspection", step1),
-        ("## Step 2: EDA", step2),
-        ("## Step 3: prediction problem (contract)", step3),
-    ):
+    # Step 3's contract is the owner-reviewed text in PIPELINE.md; a re-run never rewrites it.
+    for header, body in (("## Step 1: data inspection", step1), ("## Step 2: EDA", step2)):
         start = text.index(header) + len(header)
         end = text.index("\n## ", start)
         text = text[:start] + "\n\n" + body + "\n" + text[end:]
