@@ -11,6 +11,7 @@ import dagster as dg
 from dagster_dbt import DbtCliResource, DbtProject, dbt_assets
 
 from ledgerlens.core.db import connect, ensure_audit_schema
+from ledgerlens.orchestration.fpa_assets import FPA_ASSETS, FPA_CHECKS
 from ledgerlens.orchestration.interviews_assets import INTERVIEW_ASSETS, INTERVIEW_CHECKS
 from ledgerlens.ratecards.config import RateCardsConfig
 from ledgerlens.ratecards.generate import generate_world, write_world
@@ -101,7 +102,7 @@ def no_billing_drift() -> dg.AssetCheckResult:
 
 
 defs = dg.Definitions(
-    assets=[ledgerlens_dbt_assets, ratecards_world, ratecards_pipeline, *INTERVIEW_ASSETS],
-    asset_checks=[no_billing_drift, *INTERVIEW_CHECKS],
+    assets=[ledgerlens_dbt_assets, ratecards_world, ratecards_pipeline, *INTERVIEW_ASSETS, *FPA_ASSETS],
+    asset_checks=[no_billing_drift, *INTERVIEW_CHECKS, *FPA_CHECKS],
     resources={"dbt": DbtCliResource(project_dir=dbt_project)},
 )

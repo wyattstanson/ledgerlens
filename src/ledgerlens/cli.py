@@ -1,9 +1,10 @@
 """LedgerLens command line.
 
-python -m ledgerlens.cli generate [--pack ratecards|interviews|all] [--seed 42]
+python -m ledgerlens.cli generate [--pack ratecards|interviews|fpa|all] [--seed 42]
 python -m ledgerlens.cli pipeline ratecards [--simulate-review]
 python -m ledgerlens.cli pipeline interviews
-python -m ledgerlens.cli golden ratecards|interviews [--seed 42]
+python -m ledgerlens.cli pipeline fpa                 # dbt build of the FP&A marts, then bridges and scenario
+python -m ledgerlens.cli golden ratecards|interviews|fpa [--seed 42]
 python -m ledgerlens.cli spotcheck interviews        # writes the blind 50-note labelling sheet
 """
 
@@ -14,6 +15,11 @@ from collections.abc import Sequence
 from ledgerlens.core.approvals import ApprovalQueue
 from ledgerlens.core.db import ensure_audit_schema
 from ledgerlens.core.llm import LLMClient, ModelsConfig
+from ledgerlens.fpa import generate as fpa_generate
+from ledgerlens.fpa import golden as fpa_golden
+from ledgerlens.fpa.config import FpaConfig
+from ledgerlens.fpa.pipeline import run_fpa
+from ledgerlens.fpa.plan import build_plan
 from ledgerlens.interviews import generate as iv_generate
 from ledgerlens.interviews import golden as iv_golden
 from ledgerlens.interviews.config import InterviewsConfig
@@ -52,10 +58,10 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 (o
     gen = sub.add_parser(
         "generate", help="write synthetic data (warehouse; interview person data to the vault)"
     )
-    gen.add_argument("--pack", choices=["ratecards", "interviews", "all"], default="all")
+    gen.add_argument("--pack", choices=["ratecards", "interviews", "fpa", "all"], default="all")
     gen.add_argument("--seed", type=int, default=None)
     pipe = sub.add_parser("pipeline", help="run a pack's compute steps")
-    pipe.add_argument("pack", choices=["ratecards", "interviews"])
+    pipe.add_argument("pack", choices=["ratecards", "interviews", "fpa"])
     pipe.add_argument(
         "--simulate-review",
         action="store_true",
@@ -65,7 +71,7 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 (o
         ),
     )
     gold = sub.add_parser("golden", help="regenerate a pack's golden eval set from generator truth")
-    gold.add_argument("pack", choices=["ratecards", "interviews"])
+    gold.add_argument("pack", choices=["ratecards", "interviews", "fpa"])
     gold.add_argument("--seed", type=int, default=None)
     spot = sub.add_parser("spotcheck", help="write the blind tagger spot-check sheet for a human to label")
     spot.add_argument("pack", choices=["interviews"])
@@ -74,6 +80,7 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 (o
     settings = get_settings()
     rc_config = RateCardsConfig.from_yaml(settings.config_dir / "ratecards.yaml")
     iv_config = InterviewsConfig.from_yaml(settings.config_dir / "interviews.yaml")
+    fpa_config = FpaConfig.from_yaml(settings.config_dir / "fpa.yaml")
     plan = AnalysisPlan.from_yaml(settings.config_dir / "analysis_plan.yaml")
     seed = settings.seed if getattr(args, "seed", None) is None else args.seed
     ensure_audit_schema(settings.db)
@@ -87,6 +94,13 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 (o
             iv_world = iv_generate.generate_world(iv_config.world, seed)
             iv_generate.write_world(settings.db, settings.restricted_db, iv_world)
             print(f"interviews: {iv_world.ratings.height} ratings; person data -> {settings.restricted_db}")
+        if args.pack in ("fpa", "all"):
+            fpa_world = fpa_generate.generate_world(fpa_config.world, seed)
+            fpa_generate.write_world(settings.db, fpa_world, build_plan(fpa_config.world, seed))
+            print(
+                f"fpa: {fpa_world.payment_events.height} payment events, "
+                f"{fpa_world.transaction.height} transactions"
+            )
     elif args.command == "pipeline" and args.pack == "ratecards":
         solution = run_ratecards(settings.db, rc_config)
         if args.simulate_review:
@@ -97,6 +111,9 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 (o
             print("panel: infeasible (see ratecards.panel_meta)")
         else:
             print(f"panel: {json.dumps(list(solution.kept))}")
+    elif args.command == "pipeline" and args.pack == "fpa":
+        run = run_fpa(settings.db, fpa_config)
+        print(f"fpa: as of {run.as_of}; {run.totals.height} variance rows; scenario {run.scenario.name}")
     elif args.command == "pipeline":
         registered = run_interviews(
             settings.db, settings.restricted_db, plan, _tagger(settings, iv_config), owner_labels=SPOT_CHECK
@@ -105,6 +122,9 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 (o
     elif args.command == "golden":
         if args.pack == "ratecards":
             cases = golden_cases(rc_generate.generate_world(rc_config.world, seed), rc_config)
+        elif args.pack == "fpa":
+            fpa_world = fpa_generate.generate_world(fpa_config.world, seed)
+            cases = fpa_golden.golden_cases(fpa_world, build_plan(fpa_config.world, seed), fpa_config)
         else:
             cases = iv_golden.golden_cases(iv_generate.generate_world(iv_config.world, seed), plan)
         path = GOLDEN_DIR / f"{args.pack}.jsonl"

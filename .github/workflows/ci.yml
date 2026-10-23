@@ -21,4 +21,6 @@ jobs:
       - run: uv run python -m ledgerlens.cli generate --seed 42
       - run: uv run python -m ledgerlens.cli pipeline ratecards --simulate-review
       - run: uv run python -m ledgerlens.cli pipeline interviews
+      # dbt build of the FP&A marts (ledger reconciliation tests included), then bridges, flags and scenario.
+      - run: uv run python -m ledgerlens.cli pipeline fpa
       - run: uv run python -m ledgerlens.core.evals.run --suite offline
