@@ -1,17 +1,10 @@
-"""Cross-validation scoring (ml_pipeline/evaluation.py): per-fold scale, horizons, coverage, choice."""
-
-import importlib.util
-from pathlib import Path
+"""Forecast scoring (ledgerlens.fpa.forecast_eval): per-fold scale, horizons, coverage, choice."""
 
 import numpy as np
 import pandas as pd
 import pytest
 
-EVALUATION_PY = Path(__file__).resolve().parents[2] / "ml_pipeline" / "evaluation.py"
-_spec = importlib.util.spec_from_file_location("ml_evaluation", EVALUATION_PY)
-assert _spec is not None and _spec.loader is not None
-E = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(E)
+from ledgerlens.fpa import forecast_eval as E
 
 
 def test_seasonal_scale_uses_the_season_and_falls_back_to_lag_one():

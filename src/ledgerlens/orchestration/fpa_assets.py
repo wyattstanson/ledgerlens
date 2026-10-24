@@ -101,5 +101,59 @@ def bridge_sums_to_variance() -> dg.AssetCheckResult:
     )
 
 
-FPA_ASSETS = [fpa_world, fpa_pipeline]
-FPA_CHECKS = [bridge_sums_to_variance]
+@dg.asset(
+    group_name="fpa",
+    deps=[fpa_pipeline],
+    description="Forecasts from the reviewed models (ml_pipeline, Gate C), refit on every closed period. "
+    "statsforecast needs Linux on machines where App Control blocks statsmodels (ADR 0005).",
+)
+def fpa_forecast() -> dg.MaterializeResult:
+    from ledgerlens.fpa.forecast import run_forecast  # noqa: PLC0415 (statsforecast loads only here)
+
+    run = run_forecast(get_settings().db)
+    return dg.MaterializeResult(
+        metadata={
+            "origin": run.origin,
+            "series": int(run.forecasts["unique_id"].nunique()),
+            "total_months": int(run.totals["ds"].nunique()),
+        }
+    )
+
+
+# The latest closed month's actual drivers against the forecast made at the previous origin (step 16 plan).
+DRIFT_SQL = """
+with latest as (select latest_closed from fpa.run_meta),
+prior as (
+    select h.unique_id, h."lo-95" as lo, h."hi-95" as hi, strftime(h.ds, '%Y-%m') as month
+    from fpa.forecast_history h, latest
+    where h.freq = 'monthly' and strftime(h.ds, '%Y-%m') = latest.latest_closed
+      and h.origin < latest.latest_closed
+    qualify row_number() over (partition by h.unique_id order by h.origin desc) = 1
+)
+select count(*) as checked, count(*) filter (where d.value < p.lo or d.value > p.hi) as outside
+from prior p
+join fpa.drivers d on d.driver || '|' || d.lob = p.unique_id and d.month = p.month and d.segment = ''
+"""
+DRIFT_LIMIT = 3  # of the 10 monthly drivers outside their 95% interval in one month
+
+
+@dg.asset_check(
+    asset=fpa_forecast,
+    description="The newly closed month's drivers fall inside the 95% intervals forecast a month earlier.",
+)
+def forecast_actuals_within_interval() -> dg.AssetCheckResult:
+    with connect(get_settings().db, read_only=True) as conn:
+        checked, outside = conn.execute(DRIFT_SQL).fetchone() or (0, 0)
+    return dg.AssetCheckResult(
+        passed=outside < DRIFT_LIMIT,
+        severity=dg.AssetCheckSeverity.WARN,
+        metadata={
+            "drivers_checked": int(checked),
+            "outside_95_interval": int(outside),
+            "note": "no earlier forecast to compare yet" if not checked else "compared with the prior origin",
+        },
+    )
+
+
+FPA_ASSETS = [fpa_world, fpa_pipeline, fpa_forecast]
+FPA_CHECKS = [bridge_sums_to_variance, forecast_actuals_within_interval]

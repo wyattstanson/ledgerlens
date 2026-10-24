@@ -57,15 +57,26 @@ answer lineage check.
    and numbers written with a scale word ("9.4 million"), refuses numbers above ten written in words, and
    requires a percentage to cite a ratio or share and a dollar amount to cite a USD value. A single digit glued
    to a word ("Q3", "v2") is still read as an identifier.
-10. **Forecasting waits for its review gates.** Model fitting happens only in `ml_pipeline/` under the
-    ml-pipeline skill, whose hook blocks fitting until the owner approves each gate in
-    `ml_pipeline/PIPELINE.md`. The `fpa.forecast` agent is registered with a tool that does not exist yet, so
-    it refuses to start until `fpa/forecast.py` lands.
+10. **Forecasting through the review gates.** Models are chosen only in `ml_pipeline/` under the ml-pipeline
+    skill, with the owner's approval at each gate (`ml_pipeline/PIPELINE.md`). Production never re-chooses
+    the model: `fpa/forecast.py` refits the reviewed choice (`ml_pipeline/model_choice.json`) on every closed
+    period. AutoETS and AutoARIMA still search their own form on the longer history, so the deployed form can
+    differ from the reviewed one; `fpa.forecast_models` records both. Data preparation lives in
+    `fpa/forecast_series.py` so the notebooks and production cannot diverge. Totals are rebuilt from driver
+    forecasts through the driver tree and carry point values only.
+11. **Where forecasts are computed.** statsforecast imports statsmodels, whose compiled module Windows App
+    Control blocks (intermittently) on the dev machine. Forecasts are therefore computed on Linux (CI, WSL,
+    later the hosted job), stored in the warehouse, and only read by the `fpa.forecast` tool, which loads no
+    model code. A forecast history keyed by origin lets the Dagster check compare each newly closed month with
+    the forecast made a month earlier.
 
 ## Consequences
 
-- Deferred, each named in PR #4: the processor variant (BUILD_PROMPT 10.1, `--variant processor`); the
-  waterfall chart and the scenario demo in the UI (Phase 5 builds the web UI); forecasting steps 4-16.
+- Deferred, each named in PR #4: the processor variant (BUILD_PROMPT 10.1, `--variant processor`, being
+  built separately as Phase 4b); the waterfall chart and the scenario demo in the UI (Phase 5 builds the
+  web UI).
+- Known forecast weakness: homeowners claim size keeps SeasonalNaive, which repeats last year's large losses
+  into the same months a year on. A robust alternative would be a model change and needs a new review.
 - Residual risks: the answer shape is prompt-level only; lineage for bridge numbers stops at the pipeline's
   `fpa.bridge` and `fpa.bridge_totals` rows, which the pipeline rebuilds from the marts on every run; a real
   feed behind the adapters must report its own source honestly.

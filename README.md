@@ -12,8 +12,8 @@ Governed analytics agents for three domains, sharing one core:
 The language model plans and explains. Deterministic code produces every number, and every number
 carries lineage to the query and rows behind it. All data is synthetic.
 
-Status: Phase 4 of 6 (rate cards, interviews and FP&A built; FP&A forecasting waits on its first review gate;
-web UI and polish to come). The full
+Status: Phase 4 of 6 (rate cards, interviews and FP&A built, including reviewed forecasts; web UI and polish to
+come). The full
 specification is in [docs/BUILD_PROMPT.md](docs/BUILD_PROMPT.md); design decisions are in
 [docs/decisions](docs/decisions).
 
@@ -39,6 +39,7 @@ uv run python -m ledgerlens.cli generate --seed 42
 uv run python -m ledgerlens.cli pipeline ratecards --simulate-review
 uv run python -m ledgerlens.cli pipeline interviews
 uv run python -m ledgerlens.cli pipeline fpa
+uv run python -m ledgerlens.cli forecast fpa      # Linux or WSL where App Control blocks statsmodels
 uv run python -m ledgerlens.core.evals.run --suite offline
 ```
 

@@ -1,21 +1,14 @@
-"""Forecasting series helpers (ml_pipeline/series.py): cleaning rules, test cutoff, statsforecast shape."""
-
-import importlib.util
-from pathlib import Path
+"""Forecasting series helpers (ledgerlens.fpa.forecast_series): cleaning, test cutoff, statsforecast shape."""
 
 import pandas as pd
 import pytest
 
-SERIES_PY = Path(__file__).resolve().parents[2] / "ml_pipeline" / "series.py"
-_spec = importlib.util.spec_from_file_location("ml_series", SERIES_PY)
-assert _spec is not None and _spec.loader is not None
-S = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(S)
+from ledgerlens.fpa import forecast_series as S
 
 
 def raw(weeks: list[str], latest_closed: str = "2026-08", window_start: str = "2023-10-01"):
     weekly = pd.DataFrame({"week_start": pd.to_datetime(weeks), "collected_premium": 1.0, "claims_paid": 2.0})
-    return S.Raw(pd.DataFrame(), weekly, pd.Timestamp(window_start), latest_closed, "2026-09")
+    return S.Raw(pd.DataFrame(), weekly, S.timestamp(window_start), latest_closed, "2026-09")
 
 
 def test_only_complete_weeks_inside_closed_months_are_kept():
@@ -40,7 +33,7 @@ def test_monthly_long_drops_the_open_month():
     monthly = pd.DataFrame(
         {"month": ["2026-08", "2026-09"], "driver": "opex", "lob": "all", "value": [1.0, 2.0]}
     )
-    r = S.Raw(monthly, pd.DataFrame(), pd.Timestamp("2023-10-01"), "2026-08", "2026-09")
+    r = S.Raw(monthly, pd.DataFrame(), S.timestamp("2023-10-01"), "2026-08", "2026-09")
     frame = S.monthly_long(r)
     assert frame["ds"].tolist() == [pd.Timestamp("2026-08-01")] and frame["series"].tolist() == ["opex|all"]
 

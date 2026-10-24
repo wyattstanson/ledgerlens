@@ -247,11 +247,57 @@ def test_fpa_agent_answers_pass_the_lineage_check(built, agent_id, tool, args):
     assert "ADR 0001" in system and "Not financial advice" in system
 
 
-def test_forecast_agent_cannot_start_until_its_tool_exists(built):
-    db, _, _ = built
-    agent = AgentRegistry.from_yaml(REPO_ROOT / "config" / "agents.yaml").get("fpa.forecast")
-    with pytest.raises(ValueError, match=r"fpa\.forecast"):
-        run_agent(agent, "Forecast cash", user="test", deps=agent_deps(db, FakeClient([])))
+def test_the_forecast_tool_says_when_no_forecast_has_been_generated(scratch):
+    start_run(scratch, "run_fpa_fc_none")
+    tool = default_tool_registry().get("fpa.forecast")
+    result = execute_tool(tool, {}, db_path=scratch, agent_run_id="run_fpa_fc_none")
+    assert result.data["found"] is False and result.numbers == []
+    assert "forecast fpa" in result.data["reason"]
+
+
+def test_forecasts_from_the_reviewed_models_are_stored_and_cited(scratch):
+    # statsforecast imports statsmodels, whose compiled module Windows App Control blocks on the dev machine;
+    # CI runs this on Linux (ADR 0005).
+    pytest.importorskip("statsforecast.models", reason="statsforecast cannot load here")
+    from ledgerlens.fpa.forecast import HORIZON, run_forecast  # noqa: PLC0415
+
+    run = run_forecast(scratch)
+    assert run.forecasts["unique_id"].nunique() == 12
+    counts = run.forecasts.loc[run.forecasts["in_horizon"]].groupby("freq")["unique_id"].value_counts()
+    assert set(counts.loc["monthly"]) == {HORIZON["monthly"]} and set(counts.loc["weekly"]) == {
+        HORIZON["weekly"]
+    }
+    assert (run.forecasts["lo-95"] >= 0).all() and (run.forecasts["lo-95"] <= run.forecasts["hi-95"]).all()
+    wide = run.totals.pivot(index="ds", columns="measure", values="value")
+    net = wide["collected_premium"] - wide["claims_paid"] - wide["lae"] - wide["opex"]
+    assert (net - wide["net_operating_cash"]).abs().max() < 0.05  # each total is rounded to the cent
+    collection = run.profile.loc[run.profile["kind"] == "collection"].groupby("lob")["share"].sum()
+    assert collection.between(0.9, 1.0).all()  # nearly all billed premium is collected within the lags
+    again = run_forecast(scratch)
+    assert again.forecasts[["unique_id", "ds", "mean"]].equals(run.forecasts[["unique_id", "ds", "mean"]])
+
+    start_run(scratch, "run_fpa_fc")
+    result = execute_tool(
+        default_tool_registry().get("fpa.forecast"),
+        {"view": "totals"},
+        db_path=scratch,
+        agent_run_id="run_fpa_fc",
+    )
+    recorded = lineage_values_for_run(scratch, "run_fpa_fc")
+    assert len(result.numbers) == 5 * HORIZON["monthly"]
+    assert all(recorded[n.lineage_id] == n.value for n in result.numbers)
+
+    agents = AgentRegistry.from_yaml(REPO_ROOT / "config" / "agents.yaml")
+    fake = FakeClient(
+        [
+            tool_use_message(("fpa__forecast", {"view": "totals"})),
+            answer_citing_last_tool("Headline: {0} next month."),
+        ]
+    )
+    answer = run_agent(
+        agents.get("fpa.forecast"), "What cash is coming?", user="test", deps=agent_deps(scratch, fake)
+    )
+    assert answer.status is RunStatus.COMPLETED, answer.warnings
 
 
 def test_scenario_on_the_real_world_cuts_cost_and_days_to_pay(built):

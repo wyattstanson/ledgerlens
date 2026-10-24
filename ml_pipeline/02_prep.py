@@ -141,6 +141,10 @@ def _(mo):
 
 @app.cell
 def _(HERE, SPLITS, cutoff, frame, guard, pd, plt):
+    _state = HERE / ".guard_state.json"
+    if _state.is_file() and '"test_touches": 0' not in _state.read_text(encoding="utf-8"):
+        # Splitting again would freeze a fresh copy of a test set that has already been scored.
+        raise RuntimeError("the frozen test set was used at step 14; a new split needs the owner's agreement")
     ordered = frame.sort_values("ds", kind="mergesort", ignore_index=True)
     n_test = int((ordered["ds"] >= cutoff).sum())
     train, _val, test = guard.split(

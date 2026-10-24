@@ -4,6 +4,7 @@ python -m ledgerlens.cli generate [--pack ratecards|interviews|fpa|all] [--seed 
 python -m ledgerlens.cli pipeline ratecards [--simulate-review]
 python -m ledgerlens.cli pipeline interviews
 python -m ledgerlens.cli pipeline fpa                 # dbt build of the FP&A marts, then bridges and scenario
+python -m ledgerlens.cli forecast fpa                 # refit the reviewed forecast models (Linux: ADR 0005)
 python -m ledgerlens.cli golden ratecards|interviews|fpa [--seed 42]
 python -m ledgerlens.cli spotcheck interviews        # writes the blind 50-note labelling sheet
 """
@@ -73,6 +74,8 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 (o
     gold = sub.add_parser("golden", help="regenerate a pack's golden eval set from generator truth")
     gold.add_argument("pack", choices=["ratecards", "interviews", "fpa"])
     gold.add_argument("--seed", type=int, default=None)
+    fcst = sub.add_parser("forecast", help="refit the reviewed forecast models and store their forecasts")
+    fcst.add_argument("pack", choices=["fpa"])
     spot = sub.add_parser("spotcheck", help="write the blind tagger spot-check sheet for a human to label")
     spot.add_argument("pack", choices=["interviews"])
     args = parser.parse_args(argv)
@@ -119,6 +122,14 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 (o
             settings.db, settings.restricted_db, plan, _tagger(settings, iv_config), owner_labels=SPOT_CHECK
         )
         print(f"interviews: plan v{registered.version} ({registered.sha256[:12]}) registered and run")
+    elif args.command == "forecast":
+        from ledgerlens.fpa.forecast import run_forecast  # noqa: PLC0415 (statsforecast loads only here)
+
+        result = run_forecast(settings.db)
+        print(
+            f"fpa: forecasts from {result.origin}: {result.forecasts['unique_id'].nunique()} series, "
+            f"{result.totals['ds'].nunique()} months of rebuilt totals"
+        )
     elif args.command == "golden":
         if args.pack == "ratecards":
             cases = golden_cases(rc_generate.generate_world(rc_config.world, seed), rc_config)

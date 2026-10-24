@@ -1,7 +1,7 @@
 {
   "test_fingerprint": "982501a4b1581146b5d2e036d8a15487470a9799223b6c0093e91cb49e63e355",
   "n_test": 112,
-  "test_touches": 0,
+  "test_touches": 1,
   "duplicates_dropped": 0,
   "split": "time",
   "created": "2026-10-23"

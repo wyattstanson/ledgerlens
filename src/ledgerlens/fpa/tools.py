@@ -454,6 +454,96 @@ def saved_search(params: SavedSearchIn, ctx: ToolContext) -> ToolResult:
     return ToolResult(data={"name": params.name, "numbers_for_months": recent}, numbers=numbers)
 
 
+# --- fpa.forecast ------------------------------------------------------------------------------------------
+
+ForecastView = Literal["totals", "drivers", "weekly_cash"]
+DRIVER_UNITS = {"due_premium": "USD", "approved_claims": "count", "severity": "USD", "opex": "USD"}
+FORECAST_NOTE = (
+    "Expected values from the models reviewed in ml_pipeline (Gate C); totals are rebuilt from driver "
+    "forecasts through the driver tree and carry no interval."
+)
+
+
+class ForecastIn(_In):
+    view: ForecastView = Field(
+        default="totals",
+        description="totals: monthly cash totals rebuilt from drivers; drivers: the monthly driver "
+        "forecasts; weekly_cash: the 13-week cash forecast",
+    )
+    lob: Line | None = Field(
+        default=None, description="For drivers: one line of business; omit for every line"
+    )
+
+
+FORECAST_TABLES_SQL = (
+    "select count(*) as n from information_schema.tables "
+    "where table_schema = 'fpa' and table_name = 'forecast_meta'"
+)
+FORECAST_META_SQL = "select origin, last_complete_week from fpa.forecast_meta"
+FORECAST_TOTALS_SQL = "select row_key, ds, measure, value from fpa.forecast_totals order by measure, ds"
+FORECAST_SQL = """
+select row_key, unique_id, ds, model, mean, "lo-80" as lo80, "hi-80" as hi80
+from fpa.forecasts
+where in_horizon and freq = ? and (?::varchar is null or unique_id = 'opex|all' or unique_id like '%|' || ?)
+order by unique_id, ds
+"""
+FORECAST_MODELS_SQL = (
+    "select row_key, unique_id, chosen, cv_mase, test_mase, baseline_test_mase from fpa.forecast_models"
+)
+
+
+def forecast(params: ForecastIn, ctx: ToolContext) -> ToolResult:
+    if not _rows(ctx, FORECAST_TABLES_SQL)[0]["n"]:
+        return ToolResult(
+            data={
+                "found": False,
+                "reason": "forecasts have not been generated; run "
+                "`python -m ledgerlens.cli forecast fpa` on Linux (ADR 0005)",
+            }
+        )
+    meta = _rows(ctx, FORECAST_META_SQL)[0]
+    numbers = []
+    if params.view == "totals":
+        source = Rows([], FORECAST_TOTALS_SQL, ["fpa.forecast_totals"])
+        for r in _rows(ctx, FORECAST_TOTALS_SQL):
+            label = f"forecast {r['measure']} {r['ds']:%Y-%m}"
+            numbers.append(_cite(ctx, label, r["value"], "USD", source, [r["row_key"]]))
+        shown: set[str] = set()
+    else:
+        freq = "weekly" if params.view == "weekly_cash" else "monthly"
+        source = Rows([], FORECAST_SQL, ["fpa.forecasts"])
+        rows = _rows(ctx, FORECAST_SQL, [freq, params.lob, params.lob])
+        shown = {r["unique_id"] for r in rows}
+        for r in rows:
+            unit = "USD" if freq == "weekly" else DRIVER_UNITS[r["unique_id"].split("|")[0]]
+            when = f"{r['ds']:%Y-%m-%d}" if freq == "weekly" else f"{r['ds']:%Y-%m}"
+            for name, column in (("forecast", "mean"), ("80% low", "lo80"), ("80% high", "hi80")):
+                numbers.append(
+                    _cite(ctx, f"{name} {r['unique_id']} {when}", r[column], unit, source, [r["row_key"]])
+                )
+    models = _rows(ctx, FORECAST_MODELS_SQL)
+    quality = Rows([], FORECAST_MODELS_SQL, ["fpa.forecast_models"])
+    for m in models:
+        if m["unique_id"] not in shown:
+            continue
+        for name in ("cv_mase", "test_mase", "baseline_test_mase"):
+            if m[name] is not None:
+                numbers.append(
+                    _cite(ctx, f"{name} {m['unique_id']}", m[name], "ratio", quality, [m["row_key"]])
+                )
+    data = {
+        "found": True,
+        "view": params.view,
+        "origin": meta["origin"],
+        "last_complete_week": meta["last_complete_week"],
+        "models": {
+            m["unique_id"]: m["chosen"] for m in models if params.view == "totals" or m["unique_id"] in shown
+        },
+        "note": f"{FORECAST_NOTE} {NOT_ADVICE}",
+    }
+    return ToolResult(data=data, numbers=numbers)
+
+
 FPA_TOOLS: tuple[Tool, ...] = (
     Tool(
         name="fpa.drivers",
@@ -516,6 +606,12 @@ FPA_TOOLS: tuple[Tool, ...] = (
         description="Premium receivables by aging bucket (current, monitor, escalate, stale).",
         input_model=_In,
         fn=ar_aging,
+    ),
+    Tool(
+        name="fpa.forecast",
+        description="Forecasts from the reviewed models: monthly cash totals, drivers, or 13-week cash.",
+        input_model=ForecastIn,
+        fn=forecast,
     ),
     Tool(
         name="ledger.saved_search",
