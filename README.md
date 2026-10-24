@@ -47,7 +47,10 @@ debits must equal credits), then the driver tree, volume/mix/rate/timing bridges
 year to date, ADR 0001 materiality flags and the check-to-instant scenario
 ([ADR 0005](docs/decisions/0005-fpa-bridge-materiality-and-ledger-guard.md)). Forecasting goes through the
 ml-pipeline workbench in [ml_pipeline/](ml_pipeline/PIPELINE.md): `uv run python ml_pipeline/01_eda.py`
-redraws the exploration figures, and no model is fitted until each review gate is approved.
+redraws the exploration figures, and no model is fitted until each review gate is approved. The model notebooks
+(`03_model.py` on) need statsforecast, whose statsmodels dependency loads a compiled module that Windows App
+Control blocks on some machines; there, run them under Linux (WSL) with a separate environment:
+`UV_PROJECT_ENVIRONMENT=~/.venvs/ledgerlens uv run python ml_pipeline/03_model.py`.
 
 Interview data about people (candidates, ratings, notes, group attributes) is written only to
 `data/vault.duckdb`. The warehouse and every tool see aggregates, and cells under five people are

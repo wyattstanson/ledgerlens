@@ -1,0 +1,134 @@
+{
+  "approved_claims|homeowners": {
+    "freq": "monthly",
+    "chosen": "SeasonalNaive",
+    "cv_mase": 1.436,
+    "baseline_cv_mase": 1.436,
+    "beats_baseline": false,
+    "forms_on_training_rows": {
+      "AutoETS": "ETS(A,N,N)",
+      "AutoARIMA": "[0, 0, 0, 0, 12, 0, 1]"
+    }
+  },
+  "approved_claims|personal_auto": {
+    "freq": "monthly",
+    "chosen": "SeasonalNaive",
+    "cv_mase": 1.5275,
+    "baseline_cv_mase": 1.5275,
+    "beats_baseline": false,
+    "forms_on_training_rows": {
+      "AutoETS": "ETS(M,N,N)",
+      "AutoARIMA": "[0, 0, 0, 0, 12, 0, 1]"
+    }
+  },
+  "approved_claims|small_commercial": {
+    "freq": "monthly",
+    "chosen": "AutoARIMA",
+    "cv_mase": 0.4859,
+    "baseline_cv_mase": 1.0496,
+    "beats_baseline": true,
+    "forms_on_training_rows": {
+      "AutoETS": "ETS(M,N,N)",
+      "AutoARIMA": "[0, 0, 0, 0, 12, 0, 0]"
+    }
+  },
+  "due_premium|homeowners": {
+    "freq": "monthly",
+    "chosen": "AutoARIMA",
+    "cv_mase": 1.1478,
+    "baseline_cv_mase": 1.3868,
+    "beats_baseline": true,
+    "forms_on_training_rows": {
+      "AutoETS": "ETS(M,A,M)",
+      "AutoARIMA": "[1, 0, 0, 0, 12, 1, 1]"
+    }
+  },
+  "due_premium|personal_auto": {
+    "freq": "monthly",
+    "chosen": "AutoETS",
+    "cv_mase": 0.7056,
+    "baseline_cv_mase": 1.365,
+    "beats_baseline": true,
+    "forms_on_training_rows": {
+      "AutoETS": "ETS(M,A,N)",
+      "AutoARIMA": "[0, 1, 0, 0, 12, 1, 1]"
+    }
+  },
+  "due_premium|small_commercial": {
+    "freq": "monthly",
+    "chosen": "AutoARIMA",
+    "cv_mase": 0.8223,
+    "baseline_cv_mase": 1.3323,
+    "beats_baseline": true,
+    "forms_on_training_rows": {
+      "AutoETS": "ETS(M,A,N)",
+      "AutoARIMA": "[0, 0, 0, 0, 12, 0, 1]"
+    }
+  },
+  "opex|all": {
+    "freq": "monthly",
+    "chosen": "AutoARIMA",
+    "cv_mase": 1.2134,
+    "baseline_cv_mase": 1.4804,
+    "beats_baseline": true,
+    "forms_on_training_rows": {
+      "AutoETS": "ETS(A,N,N)",
+      "AutoARIMA": "[0, 0, 0, 0, 12, 0, 0]"
+    }
+  },
+  "severity|homeowners": {
+    "freq": "monthly",
+    "chosen": "SeasonalNaive",
+    "cv_mase": 2.0392,
+    "baseline_cv_mase": 2.0392,
+    "beats_baseline": false,
+    "forms_on_training_rows": {
+      "AutoETS": "ETS(M,A,N)",
+      "AutoARIMA": "[0, 0, 0, 0, 12, 0, 0]"
+    }
+  },
+  "severity|personal_auto": {
+    "freq": "monthly",
+    "chosen": "AutoARIMA",
+    "cv_mase": 0.6688,
+    "baseline_cv_mase": 1.1929,
+    "beats_baseline": true,
+    "forms_on_training_rows": {
+      "AutoETS": "ETS(A,N,N)",
+      "AutoARIMA": "[0, 1, 0, 0, 12, 0, 0]"
+    }
+  },
+  "severity|small_commercial": {
+    "freq": "monthly",
+    "chosen": "AutoETS",
+    "cv_mase": 0.533,
+    "baseline_cv_mase": 0.7187,
+    "beats_baseline": true,
+    "forms_on_training_rows": {
+      "AutoETS": "ETS(M,Ad,N)",
+      "AutoARIMA": "[0, 0, 0, 0, 12, 0, 0]"
+    }
+  },
+  "cash_weekly|claims_paid": {
+    "freq": "weekly",
+    "chosen": "AutoARIMA",
+    "cv_mase": 0.985,
+    "baseline_cv_mase": 1.3263,
+    "beats_baseline": true,
+    "forms_on_training_rows": {
+      "AutoETS": "ETS(A,N,N)",
+      "AutoARIMA": "[0, 0, 0, 0, 52, 0, 0]"
+    }
+  },
+  "cash_weekly|collected_premium": {
+    "freq": "weekly",
+    "chosen": "AutoARIMA",
+    "cv_mase": 0.5688,
+    "baseline_cv_mase": 1.2308,
+    "beats_baseline": true,
+    "forms_on_training_rows": {
+      "AutoETS": "ETS(M,Ad,N)",
+      "AutoARIMA": "[3, 1, 0, 0, 52, 1, 1]"
+    }
+  }
+}

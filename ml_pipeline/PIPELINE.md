@@ -2,7 +2,10 @@
 
 The only place in LedgerLens that fits models. Data: the seed-42 synthetic insurer in
 `data/warehouse.duckdb` (driver table `fpa.drivers`, weekly cash `fpa.fpa_cash_weekly`, plan `raw_fpa.plan_*`).
-Workbench: marimo notebooks in this folder; figures in `figures/`; profile in `data_profile.json`.
+Workbench: marimo notebooks in this folder; figures in `figures/`; profile in `data_profile.json`. Splits and
+cross-validation frames go to `data/ml_pipeline/` (gitignored, rebuilt from the seed-42 warehouse). From step 9
+on the notebooks run in WSL (`UV_PROJECT_ENVIRONMENT=~/.venvs/ledgerlens`), because Windows App Control blocks a
+compiled statsmodels module that statsforecast imports.
 
 ## Steps
 
@@ -16,10 +19,10 @@ Workbench: marimo notebooks in this folder; figures in `figures/`; profile in `d
 | 6 | Train / validation / test split | approved-gate | Chronological split at 2026-03-01 with guard.split: 542 training rows, 112 test rows (6-26 per series), test fingerprint frozen in .guard_state.json; no validation slice (rolling-origin CV inside training). |
 | 7 | Feature engineering | approved-gate | No engineered features: univariate models; season lengths 12 (monthly) and 52 (weekly). |
 | 8 | Preprocessing | approved-gate | series.to_statsforecast: 10 monthly series x 29 months, 2 weekly series x 126 weeks; no scaling, encoding or imputation. |
-| 9 | Baseline model | todo | |
-| 10 | Model training | todo | |
-| 11 | Hyperparameter tuning | todo | |
-| 12 | Model evaluation | todo | |
+| 9 | Baseline model | done | SeasonalNaive(12) monthly and SeasonalNaive(52) weekly, cross-validated: median MASE 1.35 across the 12 series. |
+| 10 | Model training | done | AutoETS (median MASE 1.00) and AutoARIMA (0.94) in the same 3-window cross-validation; the forms picked on all training rows are in model_choice.json. |
+| 11 | Hyperparameter tuning | done | No manual tuning: the Auto models' AICc search on each fold's training rows is the tuning. Choice per series by cross-validated MASE, baseline kept unless beaten: a candidate wins on 9 of 12 series. |
+| 12 | Model evaluation | done | Figures 12_cv_mase, 12_interval_coverage and 12_cv_forecasts; mean 80% interval coverage 71%, mean 95% coverage 90%. |
 | 13 | Error analysis | todo | |
 | 14 | Final test | todo | |
 | 15 | Deployment | todo | |
@@ -82,3 +85,6 @@ Model rationale:
 - Figure 02_weekly_cash.png: 158 weeks from 2023-09-25 to 2026-09-28. The first and last weeks are partial (the window starts mid-week and the last month is still open), so they are dropped before modelling. Week-to-week variation: premium 7% of its mean, claims 39%; claims are lumpier because a few large losses dominate a week, so their 13-week intervals will be wider.
 - Figure 04_cleaning.png: Top: 6 of 158 weeks are dropped because they are partial or fall in the open month; 152 complete weeks remain. Bottom: claim size has 2 spikes above a robust z of 5 in the training months (homeowners 2025-11 (z=10.6), homeowners 2026-01 (z=5.2)). They are real large losses, so they stay in the data; the model choice must cope with them.
 - Figure 06_split.png: Blue is training, red is the frozen test set from 2026-03-01: 542 training rows and 112 test rows (6-26 per series). The test rows are fingerprinted by the guard and are touched once, at step 14.
+- Figure 12_cv_mase.png: Cross-validated MASE per series (monthly over 1-6 months, weekly over 1-13 weeks); the dashed line is the in-sample seasonal naive error. A candidate beats SeasonalNaive on 9 of 12 series (approved_claims|small_commercial, due_premium|homeowners, due_premium|personal_auto, due_premium|small_commercial, opex|all, severity|personal_auto, severity|small_commercial, cash_weekly|claims_paid, cash_weekly|collected_premium); the rest keep the baseline.
+- Figure 12_interval_coverage.png: Average interval coverage across series and folds against the nominal 80% and 95% (dashed). Furthest from nominal: SeasonalNaive at 80% (62%). Under-coverage means the intervals are too narrow to plan cash against; over-coverage means they are wider than needed.
+- Figure 12_cv_forecasts.png: The last cross-validation window for four series: each model's forecast against what actually happened, with the chosen model's 80% interval. These are training months held back inside cross-validation, not the frozen test set.
