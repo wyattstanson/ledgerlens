@@ -19,10 +19,10 @@ compiled statsmodels module that statsforecast imports.
 | 6 | Train / validation / test split | approved-gate | Chronological split at 2026-03-01 with guard.split: 542 training rows, 112 test rows (6-26 per series), test fingerprint frozen in .guard_state.json; no validation slice (rolling-origin CV inside training). |
 | 7 | Feature engineering | approved-gate | No engineered features: univariate models; season lengths 12 (monthly) and 52 (weekly). |
 | 8 | Preprocessing | approved-gate | series.to_statsforecast: 10 monthly series x 29 months, 2 weekly series x 126 weeks; no scaling, encoding or imputation. |
-| 9 | Baseline model | done | SeasonalNaive(12) monthly and SeasonalNaive(52) weekly, cross-validated: median MASE 1.35 across the 12 series. |
-| 10 | Model training | done | AutoETS (median MASE 1.00) and AutoARIMA (0.94) in the same 3-window cross-validation; the forms picked on all training rows are in model_choice.json. |
-| 11 | Hyperparameter tuning | done | No manual tuning: the Auto models' AICc search on each fold's training rows is the tuning. Choice per series by cross-validated MASE, baseline kept unless beaten: a candidate wins on 9 of 12 series. |
-| 12 | Model evaluation | done | Figures 12_cv_mase, 12_interval_coverage and 12_cv_forecasts; mean 80% interval coverage 71%, mean 95% coverage 90%. |
+| 9 | Baseline model | approved-gate | SeasonalNaive(12) monthly and SeasonalNaive(52) weekly, cross-validated: median MASE 1.35 across the 12 series. |
+| 10 | Model training | approved-gate | AutoETS (median MASE 1.00) and AutoARIMA (0.94) in the same 3-window cross-validation; the forms picked on all training rows are in model_choice.json. |
+| 11 | Hyperparameter tuning | approved-gate | No manual tuning: the Auto models' AICc search on each fold's training rows is the tuning. Choice per series by cross-validated MASE, baseline kept unless beaten: a candidate wins on 9 of 12 series. |
+| 12 | Model evaluation | approved-gate | Figures 12_cv_mase, 12_interval_coverage and 12_cv_forecasts; mean 80% interval coverage 71%, mean 95% coverage 90%. |
 | 13 | Error analysis | todo | |
 | 14 | Final test | todo | |
 | 15 | Deployment | todo | |
@@ -32,7 +32,7 @@ compiled statsmodels module that statsforecast imports.
 
 - Gate A: approved 2026-10-23
 - Gate B: approved 2026-10-23
-- Gate C: pending
+- Gate C: approved 2026-10-24
 - Gate D: pending
 
 ## Step 1: data inspection
