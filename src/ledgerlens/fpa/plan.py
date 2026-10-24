@@ -16,7 +16,8 @@ import polars as pl
 
 from ledgerlens.core.stats import seed_for
 from ledgerlens.fpa.config import CHANNELS, LINES, METHODS, ChannelConfig, MethodConfig, WorldConfig
-from ledgerlens.fpa.generate import MORTGAGEE_SHARE, PAY_PLAN_INSTALMENTS, month_bounds, month_list
+from ledgerlens.fpa.generate import MORTGAGEE_SHARE, PAY_PLAN_INSTALMENTS
+from ledgerlens.fpa.gl import month_bounds, month_list
 
 DAYS_PER_MONTH = 365.25 / 12
 PROFILE_DRAWS = 200_000

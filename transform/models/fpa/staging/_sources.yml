@@ -1,21 +1,33 @@
 version: 2
 
-# Written by fpa/generate.py (the Dagster asset fpa_world); dagster-dbt keys these as raw_fpa/<table>.
+# Written by fpa/raw.py (the Dagster asset fpa_world); dagster-dbt keys these as raw_fpa/<table>. The warehouse
+# holds one FP&A world at a time, the insurer or the processor (ADR 0005): the other world's own tables are
+# written empty, so every model builds and every test runs either way.
 sources:
   - name: raw_fpa
-    description: Synthetic insurer payments feed, policies, claims and a NetSuite-shaped ledger (ADR 0001).
+    description: >
+      Synthetic payments feed and NetSuite-shaped ledger (ADR 0001), for a P&C insurer (policies, claims) or a
+      payment processor (merchants, captures, chargebacks).
     schema: raw_fpa
     tables:
       - name: payment_events
-      - name: instalments
-      - name: claims
-      - name: payouts
       - name: opex
       - name: transaction
         quoting: { identifier: true } # a reserved word in SQL
       - name: transactionline
       - name: account
       - name: accountingperiod
+      - name: plan_opex
+      # The insurer.
+      - name: instalments
+      - name: claims
+      - name: payouts
       - name: plan_premium
       - name: plan_claims
-      - name: plan_opex
+      # The processor.
+      - name: merchants
+      - name: captures
+      - name: chargebacks
+      - name: plan_processing
+      - name: plan_chargebacks
+      - name: plan_merchants

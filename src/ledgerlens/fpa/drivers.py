@@ -16,7 +16,7 @@ from pathlib import Path
 
 import polars as pl
 
-from ledgerlens.core.db import connect
+from ledgerlens.core.db import NO_EXTERNAL_ACCESS, connect
 
 DRIVER_SCHEMA = {
     "month": pl.String,
@@ -42,7 +42,7 @@ class Marts:
 
 
 def load_marts(db: Path) -> Marts:
-    with connect(db) as conn:
+    with connect(db, read_only=True, config=NO_EXTERNAL_ACCESS) as conn:
         frames = {
             "premium": "select * from fpa.fpa_premium_monthly",
             "claims": "select * from fpa.fpa_claims_monthly",
@@ -56,7 +56,7 @@ def load_marts(db: Path) -> Marts:
         return Marts(**{name: conn.execute(sql).pl() for name, sql in frames.items()})
 
 
-def _row(
+def driver_row(
     month: str, lob: str, driver: str, segment: str, value: float, unit: str, table: str, keys: list[str]
 ) -> dict:
     return {
@@ -79,8 +79,8 @@ def driver_table(marts: Marts) -> pl.DataFrame:
         collected = float(g["collected_amount"].sum())
         on_time_part = 0.0
         rows += [
-            _row(month, lob, "due_premium", "", due, "USD", "fpa_premium_monthly", keys),
-            _row(
+            driver_row(month, lob, "due_premium", "", due, "USD", "fpa_premium_monthly", keys),
+            driver_row(
                 month,
                 lob,
                 "instalments_due",
@@ -90,17 +90,17 @@ def driver_table(marts: Marts) -> pl.DataFrame:
                 "fpa_premium_monthly",
                 keys,
             ),
-            _row(month, lob, "collected_premium", "", collected, "USD", "fpa_premium_monthly", keys),
+            driver_row(month, lob, "collected_premium", "", collected, "USD", "fpa_premium_monthly", keys),
         ]
         for r in g.iter_rows(named=True):
             mix = r["due_amount"] / due if due else 0.0
             on_time = r["paid_on_time"] / r["instalments_due"] if r["instalments_due"] else 0.0
             on_time_part += due * mix * on_time
             rows += [
-                _row(
+                driver_row(
                     month, lob, "method_mix", r["method"], mix, "share", "fpa_premium_monthly", [r["row_key"]]
                 ),
-                _row(
+                driver_row(
                     month,
                     lob,
                     "on_time_rate",
@@ -112,7 +112,7 @@ def driver_table(marts: Marts) -> pl.DataFrame:
                 ),
             ]
         rows.append(
-            _row(
+            driver_row(
                 month,
                 lob,
                 "late_collections",
@@ -131,8 +131,8 @@ def driver_table(marts: Marts) -> pl.DataFrame:
         lae = float(g["lae_amount"].sum())
         net_paid = float(g["paid_amount"].sum()) - float(g["returned_amount"].sum())
         rows += [
-            _row(month, lob, "approved_claims", "", count, "count", "fpa_claims_monthly", keys),
-            _row(
+            driver_row(month, lob, "approved_claims", "", count, "count", "fpa_claims_monthly", keys),
+            driver_row(
                 month,
                 lob,
                 "severity",
@@ -142,14 +142,14 @@ def driver_table(marts: Marts) -> pl.DataFrame:
                 "fpa_claims_monthly",
                 keys,
             ),
-            _row(month, lob, "claims_paid", "", net_paid, "USD", "fpa_claims_monthly", keys),
-            _row(month, lob, "payouts", "", payouts, "count", "fpa_claims_monthly", keys),
-            _row(month, lob, "lae", "", lae, "USD", "fpa_claims_monthly", keys),
+            driver_row(month, lob, "claims_paid", "", net_paid, "USD", "fpa_claims_monthly", keys),
+            driver_row(month, lob, "payouts", "", payouts, "count", "fpa_claims_monthly", keys),
+            driver_row(month, lob, "lae", "", lae, "USD", "fpa_claims_monthly", keys),
         ]
         for r in g.iter_rows(named=True):
             k = [r["row_key"]]
             rows.append(
-                _row(
+                driver_row(
                     month,
                     lob,
                     "channel_share",
@@ -162,7 +162,7 @@ def driver_table(marts: Marts) -> pl.DataFrame:
             )
             if r["payouts"]:
                 rows += [
-                    _row(
+                    driver_row(
                         month,
                         lob,
                         "handling_cost",
@@ -172,7 +172,7 @@ def driver_table(marts: Marts) -> pl.DataFrame:
                         "fpa_claims_monthly",
                         k,
                     ),
-                    _row(
+                    driver_row(
                         month,
                         lob,
                         "days_to_pay",
@@ -183,11 +183,18 @@ def driver_table(marts: Marts) -> pl.DataFrame:
                         k,
                     ),
                 ]
-    for r in marts.cash.iter_rows(named=True):
+    rows += cash_rows(marts.cash)
+    return pl.DataFrame(rows, schema=DRIVER_SCHEMA).sort("month", "lob", "driver", "segment")
+
+
+def cash_rows(cash: pl.DataFrame) -> list[dict]:
+    """Opex and net operating cash per month from the ledger's cash mart, for every world."""
+    rows: list[dict] = []
+    for r in cash.iter_rows(named=True):
         keys = [r["month"]]
         rows += [
-            _row(r["month"], "all", "opex", "", r["opex"] or 0.0, "USD", "fpa_cash_monthly", keys),
-            _row(
+            driver_row(r["month"], "all", "opex", "", r["opex"] or 0.0, "USD", "fpa_cash_monthly", keys),
+            driver_row(
                 r["month"],
                 "all",
                 "net_operating_cash",
@@ -198,16 +205,16 @@ def driver_table(marts: Marts) -> pl.DataFrame:
                 keys,
             ),
         ]
-    return pl.DataFrame(rows, schema=DRIVER_SCHEMA).sort("month", "lob", "driver", "segment")
+    return rows
 
 
-def net_cash_from_drivers(drivers: pl.DataFrame) -> pl.DataFrame:
-    """Recompute net operating cash per month through the tree, from the driver table alone."""
+INSURER_SIGNS = {"collected_premium": 1, "claims_paid": -1, "lae": -1, "opex": -1}
+
+
+def net_cash_from_drivers(drivers: pl.DataFrame, signs: dict[str, int] = INSURER_SIGNS) -> pl.DataFrame:
+    """Recompute net operating cash per month through the tree, from the driver table alone; ``signs`` says
+    how the world's measures combine (the insurer's by default)."""
     wide = drivers.filter(pl.col("segment") == "").group_by("month", "driver").agg(pl.col("value").sum())
     pivot = wide.pivot(on="driver", index="month", values="value").fill_null(0.0)
-    return pivot.select(
-        "month",
-        (pl.col("collected_premium") - pl.col("claims_paid") - pl.col("lae") - pl.col("opex")).alias(
-            "tree_net_cash"
-        ),
-    ).sort("month")
+    tree = pl.sum_horizontal([sign * pl.col(measure) for measure, sign in signs.items()])
+    return pivot.select("month", tree.alias("tree_net_cash")).sort("month")

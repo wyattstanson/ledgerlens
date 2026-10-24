@@ -1,0 +1,27 @@
+version: 2
+
+models:
+  - name: stg_fpa__payment_events
+    description: The payments feed. direction is the credit/debit indicator from the account holder's side.
+    columns:
+      - name: event_id
+        data_tests: [unique, not_null]
+      - name: kind
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["premium_received", "claim_paid", "payout_returned", "settlement", "chargeback",
+                         "chargeback_recovered"]
+      - name: direction
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments: { values: ["in", "out"] }
+  - name: stg_fpa__chargebacks
+    columns:
+      - name: chargeback_id
+        data_tests: [unique, not_null]
+  - name: stg_fpa__merchants
+    columns:
+      - name: merchant_id
+        data_tests: [unique, not_null]

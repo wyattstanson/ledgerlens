@@ -10,7 +10,6 @@ costs (LAE) and operating expense. An opening entry carries receivables for inst
 window. The planted misses in ``config.planted`` move actuals away from the plan (see ``fpa/plan.py``).
 """
 
-import calendar
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
@@ -18,8 +17,9 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
-from ledgerlens.core.db import connect
 from ledgerlens.fpa.config import CHANNELS, LINES, METHODS, WorldConfig
+from ledgerlens.fpa.gl import Family, accounting_periods, month_bounds, month_list, post
+from ledgerlens.fpa.raw import write_raw
 
 PAY_PLAN_INSTALMENTS = {"annual": 1, "quarterly": 4, "monthly": 12}
 PRE_WINDOW_DUE_DAYS = 92  # instalments due this long before the window are carried as opening receivables
@@ -53,20 +53,6 @@ class FpaWorld:
     months: tuple[str, ...]
     seed: int
     meta: dict[str, float | str] = field(default_factory=dict)
-
-
-def month_list(end_month: str, months: int) -> tuple[str, ...]:
-    year, month = map(int, end_month.split("-"))
-    out = []
-    for _ in range(months):
-        out.append(f"{year:04d}-{month:02d}")
-        year, month = (year, month - 1) if month > 1 else (year - 1, 12)
-    return tuple(reversed(out))
-
-
-def month_bounds(month: str) -> tuple[date, date]:
-    year, mon = map(int, month.split("-"))
-    return date(year, mon, 1), date(year, mon, calendar.monthrange(year, mon)[1])
 
 
 def _days(d: date) -> int:
@@ -313,30 +299,36 @@ def generate_world(config: WorldConfig, seed: int) -> FpaWorld:  # noqa: PLR0912
         pl.lit("premium_received").alias("kind"),
         (pl.col("paid_date").cast(pl.Datetime("us")) + pl.duration(hours=12)).alias("event_ts"),
         "amount",
+        pl.lit("in").alias("direction"),
         pl.col("method").alias("instrument"),
         "lob",
         "policy_id",
         pl.lit(None, dtype=pl.String).alias("claim_id"),
+        pl.lit(None, dtype=pl.String).alias("merchant_id"),
         pl.col("instalment_id").alias("ref_id"),
     )
     paid_events = payouts.filter(pl.col("paid_ts").is_not_null()).select(
         pl.lit("claim_paid").alias("kind"),
         pl.col("paid_ts").alias("event_ts"),
         "amount",
+        pl.lit("out").alias("direction"),
         pl.col("channel").alias("instrument"),
         "lob",
         pl.lit(None, dtype=pl.String).alias("policy_id"),
         "claim_id",
+        pl.lit(None, dtype=pl.String).alias("merchant_id"),
         pl.col("payout_id").alias("ref_id"),
     )
     returned_events = payouts.filter(pl.col("returned_ts").is_not_null()).select(
         pl.lit("payout_returned").alias("kind"),
         pl.col("returned_ts").alias("event_ts"),
         "amount",
+        pl.lit("in").alias("direction"),
         pl.col("channel").alias("instrument"),
         "lob",
         pl.lit(None, dtype=pl.String).alias("policy_id"),
         "claim_id",
+        pl.lit(None, dtype=pl.String).alias("merchant_id"),
         pl.col("payout_id").alias("ref_id"),
     )
     window = (pl.col("event_ts").dt.date() >= date.fromordinal(int(window_start))) & (
@@ -366,6 +358,7 @@ def generate_world(config: WorldConfig, seed: int) -> FpaWorld:  # noqa: PLR0912
         "end_month": months[-1],
         "seed": float(seed),
         "annual_premium": round(float(last_year["amount"].sum()), 2),
+        "annual_revenue": round(float(last_year["amount"].sum()), 2),  # premium billed: ADR 0001's band
         "policies_written": float(count),
         "claims": float(n_claims),
     }
@@ -421,22 +414,13 @@ def _ledger(
 ) -> dict[str, pl.DataFrame]:
     """NetSuite-shaped GL (ADR 0001): every posting comes from an event, so the ledger reconciles to them."""
     first_day = date.fromordinal(int(window_start))
-    periods = pl.DataFrame(
-        {
-            "id": list(range(1, len(months) + 1)),
-            "periodname": [month_bounds(m)[0].strftime("%b %Y") for m in months],
-            "startdate": [month_bounds(m)[0] for m in months],
-            "enddate": [month_bounds(m)[1] for m in months],
-            "closed": [i < len(months) - 1 for i in range(len(months))],  # the latest period is open
-        }
-    )
     # One header frame per posting family, each with its two lines: (debit account, credit account).
     opening = instalments.filter(
         (pl.col("due_date") < first_day)
         & (pl.col("paid_date").is_null() | (pl.col("paid_date") >= first_day))
     )
     lae = payouts.filter(pl.col("paid_ts").is_not_null() & (pl.col("paid_ts").dt.date() >= first_day))
-    families = [
+    families: list[Family] = [
         (
             instalments.filter(pl.col("due_date") >= first_day).select(
                 pl.lit("invoice").alias("recordtype"),
@@ -538,75 +522,7 @@ def _ledger(
             1000,
         ),
     ]
-    headers = []
-    for frame, debit, credit in families:
-        headers.append(frame.with_columns(pl.lit(debit).alias("debit"), pl.lit(credit).alias("credit")))
-    tx = (
-        pl.concat(headers)
-        .sort("trandate", "recordtype", "entity", "amount")
-        .with_row_index("id", offset=1)
-        .with_columns(pl.col("id").cast(pl.Int64))
-    )
-    period_of = {row["startdate"].strftime("%Y-%m"): row["id"] for row in periods.iter_rows(named=True)}
-    prefix = pl.col("recordtype").replace_strict({"invoice": "INV", "custpymt": "PYMT", "journalentry": "JE"})
-    transaction = tx.select(
-        "id",
-        pl.format("{}-{}", prefix, pl.col("id").cast(pl.String).str.zfill(7)).alias("tranid"),
-        "trandate",
-        "recordtype",
-        "entity",
-        pl.lit(1).alias("subsidiary"),
-        pl.col("trandate")
-        .dt.strftime("%Y-%m")
-        .replace_strict(period_of, return_dtype=pl.Int64)
-        .alias("postingperiod"),
-        pl.lit(True).alias("posting"),
-        pl.lit("approved").alias("approvalstatus"),
-        pl.lit("USD").alias("currency"),
-        pl.lit(1.0).alias("exchangerate"),
-        "amount",
-        pl.col("amount").alias("foreignamount"),
-        "memo",
-        pl.col("event_id").alias("custbody_event_id"),  # links a posting to the payments-feed event behind it
-    )
-    side = [pl.col("id").alias("transaction"), "lob", "cls"]
-    lines = pl.concat(
-        [
-            tx.select(*side, pl.col("debit").alias("account"), pl.col("amount")),
-            tx.select(*side, pl.col("credit").alias("account"), -pl.col("amount")),
-        ]
-    ).sort("transaction", "account")
-    transactionline = lines.with_row_index("id", offset=1).select(
-        pl.col("id").cast(pl.Int64),
-        "transaction",
-        "account",
-        "amount",
-        pl.col("amount").alias("foreignamount"),
-        pl.col("lob").alias("department"),
-        pl.col("cls").alias("class"),
-        pl.lit("US").alias("location"),
-    )
-    account = pl.DataFrame(
-        {
-            "id": [a[0] for a in ACCOUNTS],
-            "acctnumber": [str(a[0]) for a in ACCOUNTS],
-            "fullname": [a[1] for a in ACCOUNTS],
-            "accttype": [a[2] for a in ACCOUNTS],
-            "parent": [None] * len(ACCOUNTS),
-        },
-        schema_overrides={"parent": pl.Int64},
-    )
-    subsidiary = pl.DataFrame(
-        {"id": [1], "name": ["LedgerLens Mutual (synthetic)"], "currency": ["USD"], "parent": [None]},
-        schema_overrides={"parent": pl.Int64},
-    )
-    return {
-        "transaction": transaction,
-        "transactionline": transactionline,
-        "account": account,
-        "accountingperiod": periods,
-        "subsidiary": subsidiary,
-    }
+    return post(families, accounting_periods(months), ACCOUNTS, "LedgerLens Mutual (synthetic)")
 
 
 RAW_TABLES = (
@@ -625,18 +541,10 @@ RAW_TABLES = (
 PLAN_TABLES = ("plan_premium", "plan_claims", "plan_opex")  # what plan.build_plan returns
 
 
-def write_world(warehouse: Path, world: FpaWorld, plan: dict[str, pl.DataFrame]) -> None:
-    """Raw tables and the plan to schema ``raw_fpa``, where the dbt sources read them."""
+def write_world(warehouse: Path, world: FpaWorld, plan: dict[str, pl.DataFrame]) -> dict[str, pl.DataFrame]:
+    """Raw tables and the plan to schema ``raw_fpa``, where the dbt sources read them; the processor's own
+    tables are left empty (``fpa/raw.py``)."""
     if set(plan) != set(PLAN_TABLES):
         raise ValueError(f"plan tables {sorted(plan)} differ from {PLAN_TABLES}")
-    tables = (
-        {name: getattr(world, name) for name in RAW_TABLES}
-        | plan
-        | {"world_meta": pl.DataFrame([world.meta])}
-    )
-    with connect(warehouse) as conn:
-        conn.execute("create schema if not exists raw_fpa")
-        for name, frame in tables.items():
-            conn.register("_raw_frame", frame)  # an explicit name, never a lookup of a Python variable
-            conn.execute(f'create or replace table raw_fpa."{name}" as select * from _raw_frame')  # noqa: S608
-            conn.unregister("_raw_frame")
+    frames = {name: getattr(world, name) for name in RAW_TABLES} | plan
+    return write_raw(warehouse, "insurer", frames, world.meta)
