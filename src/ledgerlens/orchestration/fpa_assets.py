@@ -113,9 +113,14 @@ def bridge_sums_to_variance() -> dg.AssetCheckResult:
     "statsforecast needs Linux on machines where App Control blocks statsmodels (ADR 0005).",
 )
 def fpa_forecast() -> dg.MaterializeResult:
-    from ledgerlens.fpa.forecast import run_forecast  # noqa: PLC0415 (statsforecast loads only here)
+    from ledgerlens.fpa.forecast import FORECAST_WORLD, loaded_world, run_forecast  # noqa: PLC0415
 
-    run = run_forecast(get_settings().db)
+    db = get_settings().db
+    if (world := loaded_world(db)) != FORECAST_WORLD:  # the processor variant has no reviewed models yet
+        return dg.MaterializeResult(
+            metadata={"skipped": f"no reviewed forecast models for the {world} world"}
+        )
+    run = run_forecast(db)
     return dg.MaterializeResult(
         metadata={
             "origin": run.origin,
@@ -148,6 +153,13 @@ DRIFT_LIMIT = 3  # of the 10 monthly drivers outside their 95% interval in one m
 )
 def forecast_actuals_within_interval() -> dg.AssetCheckResult:
     with connect(get_settings().db, read_only=True) as conn:
+        (variant,) = conn.execute("select variant from fpa.run_meta").fetchone() or (None,)
+        if (
+            variant != "insurer"
+        ):  # the stored forecasts are the insurer's; another world's drivers don't compare
+            return dg.AssetCheckResult(
+                passed=True, metadata={"note": f"no forecasts for the {variant} world"}
+            )
         checked, outside = conn.execute(DRIFT_SQL).fetchone() or (0, 0)
     return dg.AssetCheckResult(
         passed=outside < DRIFT_LIMIT,

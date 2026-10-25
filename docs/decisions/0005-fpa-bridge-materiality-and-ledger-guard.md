@@ -107,6 +107,9 @@ answer lineage check.
       disputes old enough for their repayment to have landed.
     - *Golden cases* live in `tests/evals/golden/fpa_processor/`, apart from the insurer's, and CI runs the
       offline evals once per world.
+    - *Forecasts stay with the insurer.* The reviewed models (decisions 10 and 11) cover the insurer's series:
+      `forecast fpa` refuses unless the pipeline last ran on the insurer, the Dagster forecast asset and its
+      drift check skip another world, and `fpa.forecast` answers not found there.
 
 ## Consequences
 

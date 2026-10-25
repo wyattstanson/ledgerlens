@@ -547,6 +547,10 @@ FORECAST_MODELS_SQL = (
 
 
 def forecast(params: ForecastIn, ctx: ToolContext) -> ToolResult:
+    world = _meta(ctx)["variant"]
+    if world != "insurer":  # the stored forecasts are the insurer's (ADR 0005, decision 12)
+        reason = f"the reviewed forecast models cover the insurer's series; the {world} world has none yet"
+        return ToolResult(data={"found": False, "reason": reason})
     if not _rows(ctx, FORECAST_TABLES_SQL)[0]["n"]:
         return ToolResult(
             data={

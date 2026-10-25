@@ -528,6 +528,30 @@ def test_a_kind_moving_money_both_ways_labels_each_direction(tiny):
     assert result.data["scope"]["entity"] == ENTITY != INSURER_ENTITY
 
 
+def test_the_insurers_forecasts_are_not_served_for_the_processor_world(tiny):
+    result = execute_tool(default_tool_registry().get("fpa.forecast"), {}, db_path=tiny, agent_run_id="r")
+    assert result.data == {
+        "found": False,
+        "reason": "the reviewed forecast models cover the insurer's series; the processor world has none yet",
+    }
+    assert result.numbers == []
+
+
+def test_forecasting_refuses_a_warehouse_where_the_pipeline_last_ran_another_world(tiny, tmp_path):
+    from ledgerlens.fpa.forecast import loaded_world, run_forecast  # noqa: PLC0415 (as the CLI imports it)
+
+    assert loaded_world(tiny) == "processor"
+    with pytest.raises(RuntimeError, match="last ran on processor"):
+        run_forecast(tiny)
+    fresh = tmp_path / "fresh.duckdb"
+    write_raw(
+        fresh, "insurer", empty_frames("insurer"), {"seed": 1.0}
+    )  # loaded, not yet through the pipeline
+    assert loaded_world(fresh) is None
+    with pytest.raises(RuntimeError, match="last ran on no world"):
+        run_forecast(fresh)
+
+
 def test_a_saved_search_from_the_other_world_is_not_found(tiny):
     result = execute_tool(
         default_tool_registry().get("ledger.saved_search"),
