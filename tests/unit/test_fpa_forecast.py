@@ -1,9 +1,12 @@
 """The forecast driver tree: totals rebuilt from driver values and lag profiles, by hand-worked cases."""
 
+import json
+
+import numpy as np
 import pandas as pd
 import pytest
 
-from ledgerlens.fpa.forecast import LAGS, _model, load_choice, rebuild_totals
+from ledgerlens.fpa.forecast import LAGS, _model, load_choice, load_forms, rebuild_totals, reviewed_form
 from ledgerlens.fpa.forecast_series import LINES, timestamp
 
 MONTHS = [timestamp(m) for m in pd.date_range("2026-01-01", periods=6, freq="MS")]
@@ -124,8 +127,6 @@ def test_each_series_must_restart_right_after_its_own_history_and_forms_are_reco
 
 
 def test_reviewed_arima_forms_are_written_like_deployed_ones():
-    from ledgerlens.fpa.forecast import reviewed_form  # noqa: PLC0415
-
     spec = {"chosen": "AutoARIMA", "forms_on_training_rows": {"AutoARIMA": "[3, 1, 0, 0, 52, 1, 1]"}}
     assert reviewed_form(spec) == "ARIMA(3,1,1)(0,1,0)[52]"  # statsforecast's arma is (p, q, P, Q, m, d, D)
     assert (
@@ -133,3 +134,71 @@ def test_reviewed_arima_forms_are_written_like_deployed_ones():
         == "ETS(M,A,N)"
     )
     assert reviewed_form({"chosen": "SeasonalNaive", "forms_on_training_rows": {}}) == "SeasonalNaive"
+
+
+ARIMA_311 = {
+    "model": "AutoARIMA",
+    "form": "ARIMA(3,1,1)(0,1,0)[52]",
+    "order": [3, 1, 1],
+    "seasonal_order": [0, 1, 0],
+    "include_mean": False,
+    "include_drift": False,
+}
+REVIEWED = {
+    "a": {"chosen": "AutoARIMA", "forms_on_training_rows": {"AutoARIMA": "[3, 1, 0, 0, 52, 1, 1]"}},
+    "b": {"chosen": "SeasonalNaive", "forms_on_training_rows": {}},
+}
+
+
+def test_production_refuses_forms_other_than_the_reviewed_ones(tmp_path):
+    path = tmp_path / "model_forms.json"
+    forms = {"a": ARIMA_311, "b": {"model": "SeasonalNaive", "form": "SeasonalNaive"}}
+    path.write_text(json.dumps(forms), encoding="utf-8")
+    assert load_forms(REVIEWED, path) == forms
+
+    for wrong in ({"form": "ARIMA(0,1,3)(0,0,0)[52]"}, {"model": "AutoETS"}):
+        path.write_text(json.dumps(forms | {"a": ARIMA_311 | wrong}), encoding="utf-8")
+        with pytest.raises(ValueError, match="reviewed form of a"):
+            load_forms(REVIEWED, path)
+    with pytest.raises(ValueError, match="reviewed form of a"):
+        load_forms(REVIEWED, tmp_path / "missing.json")
+
+
+def test_the_committed_forms_are_the_reviewed_ones():
+    choice = load_choice()
+    forms = load_forms(choice)
+    assert {uid: form["form"] for uid, form in forms.items()} == {
+        uid: reviewed_form(spec) for uid, spec in choice.items()
+    }
+    # The weekly collections form keeps its yearly difference (the reason forms are fixed at all).
+    assert forms["cash_weekly|collected_premium"]["seasonal_order"] == [0, 1, 0]
+
+
+def test_a_fixed_form_is_refit_as_it_is_and_a_fitted_form_refits_to_the_same_forecast():
+    pytest.importorskip("statsforecast.models", reason="statsforecast cannot load here (ADR 0005)")
+    from ledgerlens.fpa.forecast import fit_forms, forecast_chosen  # noqa: PLC0415
+
+    months = pd.date_range("2020-01-01", periods=60, freq="MS")
+    noise = np.random.default_rng(7).normal(0.0, 3.0, len(months))
+    values = [100.0 + 10.0 * (i % 12) + i + e for i, e in enumerate(noise)]
+    history = pd.DataFrame({"unique_id": "s", "ds": months, "y": values})
+
+    ar1 = {
+        "model": "AutoARIMA",
+        "form": "ARIMA(1,0,0)(0,0,0)[12]",
+        "order": [1, 0, 0],
+        "seasonal_order": [0, 0, 0],
+        "include_mean": True,
+        "include_drift": False,
+    }
+    searched = forecast_chosen(history, "monthly", {"s": "AutoARIMA"}, 3)
+    assert set(searched["form"]) != {ar1["form"]}  # left free, the search picks another form for this series
+    fixed = forecast_chosen(history, "monthly", {"s": ar1}, 3)
+    assert set(fixed["form"]) == {ar1["form"]} and set(fixed["model"]) == {"AutoARIMA"}
+    damped = {"model": "AutoETS", "form": "ETS(A,Ad,N)", "ets": "AAN", "damped": True}
+    assert set(forecast_chosen(history, "monthly", {"s": damped}, 3)["form"]) == {"ETS(A,Ad,N)"}
+
+    forms = fit_forms(history, "monthly", {"s": "AutoARIMA"})
+    again = forecast_chosen(history, "monthly", forms, 3)
+    assert again["form"].tolist() == searched["form"].tolist()
+    assert again["mean"].tolist() == pytest.approx(searched["mean"].tolist())

@@ -1,8 +1,11 @@
 """FP&A forecasts from the models the owner reviewed in ``ml_pipeline/`` (BUILD_PROMPT 10.5, Gate C).
 
 Each series gets the model chosen in ``ml_pipeline/model_choice.json`` (SeasonalNaive, AutoETS or AutoARIMA,
-per the Gate B plan), refit on every closed period and forecast from the latest closed month: 6 months for
-the monthly drivers and 13 weeks for weekly cash, with 80% and 95% intervals.
+per the Gate B plan) in the exact form it had when it was reviewed and scored in the final test
+(``ml_pipeline/model_forms.json``). It is refit on every closed period, re-estimating coefficients only, and
+forecast from the latest closed month: 6 months for the monthly drivers and 13 weeks for weekly cash, with 80%
+and 95% intervals. Left to search again on the longer history, AutoARIMA dropped the yearly pattern of weekly
+collections, so a new form needs a new review.
 
 Totals are not forecast directly. Collections, claims paid, LAE and net operating cash are rebuilt from the
 driver forecasts through the driver tree, with profiles measured on 12 closed months that are old enough to be
@@ -20,6 +23,7 @@ only read the stored tables.
 
 import hashlib
 import json
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -42,6 +46,7 @@ from ledgerlens.fpa.forecast_series import (
 from ledgerlens.settings import REPO_ROOT
 
 MODEL_CHOICE = REPO_ROOT / "ml_pipeline" / "model_choice.json"
+MODEL_FORMS = REPO_ROOT / "ml_pipeline" / "model_forms.json"
 FINAL_TEST = REPO_ROOT / "ml_pipeline" / "final_test.json"
 LEVELS = (80, 95)
 HORIZON = {"monthly": 6, "weekly": 13}
@@ -52,19 +57,37 @@ PROFILE_MONTHS = 12
 SETTLE_MONTHS = 3  # profiles use months at least this old, so their cash has arrived
 
 
+# A pick is a model name, whose form AutoETS or AutoARIMA searches on each fit, or a fixed form from
+# ``fixed_form``, which is refit as it is.
+Pick = str | dict[str, Any]
+
+
 def load_choice(path: Path = MODEL_CHOICE) -> dict[str, dict[str, Any]]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _model(name: str, freq: str) -> Any:
-    from statsforecast.models import AutoARIMA, AutoETS, SeasonalNaive  # noqa: PLC0415 (see module docstring)
+def _model(pick: Pick, freq: str) -> Any:
+    from statsforecast.models import ARIMA, AutoARIMA, AutoETS, SeasonalNaive  # noqa: PLC0415 (module docstring)
 
     season = 12 if freq == "monthly" else 52
+    # statsforecast's ETS supports seasons of at most 24 periods, so weekly ETS is non-seasonal (Gate B).
+    ets_season = season if season <= 24 else 1  # noqa: PLR2004
+    name = pick if isinstance(pick, str) else pick["model"]
+    fixed = None if isinstance(pick, str) else pick
     if name == "SeasonalNaive":
         return SeasonalNaive(season_length=season)
+    if name == "AutoETS" and fixed:
+        return AutoETS(season_length=ets_season, model=fixed["ets"], damped=fixed["damped"])
     if name == "AutoETS":
-        # statsforecast's ETS supports seasons of at most 24 periods, so weekly ETS is non-seasonal (Gate B).
-        return AutoETS(season_length=season if season <= 24 else 1)  # noqa: PLR2004
+        return AutoETS(season_length=ets_season)
+    if name == "AutoARIMA" and fixed:
+        return ARIMA(
+            order=tuple(fixed["order"]),
+            season_length=season,
+            seasonal_order=tuple(fixed["seasonal_order"]),
+            include_mean=fixed["include_mean"],
+            include_drift=fixed["include_drift"],
+        )
     if name == "AutoARIMA":
         return AutoARIMA(season_length=season)
     raise ValueError(f"unknown model {name!r}")
@@ -76,42 +99,89 @@ def _arima_form(arma: Any) -> str:
     return f"ARIMA({p},{d},{q})({sp},{sd},{sq})[{m}]"
 
 
-def _form(fitted: Any) -> str:
-    """The form a fitted model settled on: ETS components, ARIMA orders, or the model's name."""
-    spec = getattr(fitted, "model_", None)
-    if isinstance(spec, dict) and "method" in spec:
-        return str(spec["method"])
-    if isinstance(spec, dict) and "arma" in spec:
-        return _arima_form(spec["arma"])
-    return type(fitted).__name__
+def fixed_form(name: str, fitted: Any) -> dict[str, Any]:
+    """The form a fitted ``name`` model settled on, with what ``_model`` needs to refit exactly that form."""
+    spec = getattr(fitted, "model_", None) or {}
+    if name == "AutoETS":
+        error, trend, season = str(spec["method"])[4:-1].split(",")  # "ETS(M,Ad,N)"
+        return {
+            "model": name,
+            "form": str(spec["method"]),
+            "ets": error + trend[0] + season,
+            "damped": trend.endswith("d"),
+        }
+    if name == "AutoARIMA":
+        p, q, sp, sq, _, d, sd = (int(x) for x in spec["arma"])
+        coef = list(spec["coef"])
+        return {
+            "model": name,
+            "form": _arima_form(spec["arma"]),
+            "order": [p, d, q],
+            "seasonal_order": [sp, sd, sq],
+            "include_mean": "intercept" in coef,
+            "include_drift": "drift" in coef,
+        }
+    return {"model": name, "form": name}
 
 
 def reviewed_form(spec: dict[str, Any]) -> str:
-    """The form the chosen model had on the training rows at Gate C, written like ``_form``."""
+    """The form the chosen model had on the training rows at Gate C, written like ``fixed_form``."""
     form = str(spec.get("forms_on_training_rows", {}).get(spec["chosen"], spec["chosen"]))
     return _arima_form(json.loads(form)) if form.startswith("[") else form
 
 
-def forecast_chosen(history: pd.DataFrame, freq: str, choice: dict[str, str], h: int) -> pd.DataFrame:
-    """Fit each series' chosen model on ``history`` (``unique_id, ds, y``) and forecast ``h`` periods.
+def load_forms(choice: dict[str, dict[str, Any]], path: Path = MODEL_FORMS) -> dict[str, dict[str, Any]]:
+    """The fixed form of every reviewed series, refused unless each is the model and form reviewed at Gate C.
 
-    Returns ``unique_id, ds, model, form, mean, lo-80, hi-80, lo-95, hi-95``. ``form`` is what AutoETS or
-    AutoARIMA settled on for this history: refit on more months, they may pick another form of the same model.
+    The file is written by ``ml_pipeline/04_eval.py`` (step 15) from the training rows.
     """
+    forms = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    for uid, spec in choice.items():
+        form, reviewed = forms.get(uid, {}), reviewed_form(spec)
+        if form.get("model") != spec["chosen"] or form.get("form") != reviewed:
+            raise ValueError(f"{path.name} does not hold the reviewed form of {uid} ({reviewed})")
+    return {uid: forms[uid] for uid in choice}
+
+
+def _fitted(history: pd.DataFrame, freq: str, picks: Mapping[str, Pick]) -> Iterator[tuple[str, Any]]:
+    """Fit every series in ``history`` with its pick, one engine per distinct pick: (model name, engine)."""
     from statsforecast import StatsForecast  # noqa: PLC0415 (see module docstring)
 
-    frames = []
     ids = sorted(history["unique_id"].unique())
-    missing = [uid for uid in ids if uid not in choice]
+    missing = [uid for uid in ids if uid not in picks]
     if missing:
         raise KeyError(f"no reviewed model for {missing}")
-    for name in sorted({choice[uid] for uid in ids}):
-        group = [uid for uid in ids if choice[uid] == name]
-        engine = StatsForecast(models=[_model(name, freq)], freq=FREQ[freq], n_jobs=1)
-        engine.fit(df=history.loc[history["unique_id"].isin(group)])
+    groups: dict[str, list[str]] = {}
+    for uid in ids:
+        pick = picks[uid]
+        groups.setdefault(pick if isinstance(pick, str) else json.dumps(pick, sort_keys=True), []).append(uid)
+    for key in sorted(groups):
+        pick = picks[groups[key][0]]
+        engine = StatsForecast(models=[_model(pick, freq)], freq=FREQ[freq], n_jobs=1)
+        engine.fit(df=history.loc[history["unique_id"].isin(groups[key])])
+        yield (pick if isinstance(pick, str) else pick["model"]), engine
+
+
+def fit_forms(history: pd.DataFrame, freq: str, picks: Mapping[str, Pick]) -> dict[str, dict[str, Any]]:
+    """The fixed form each series' pick settles on when fit on ``history`` (``unique_id, ds, y``)."""
+    forms = {}
+    for name, engine in _fitted(history, freq, picks):
+        uids: Any = engine.uids  # pandas or polars, depending on the input frame
+        forms |= {str(uid): fixed_form(name, engine.fitted_[i, 0]) for i, uid in enumerate(uids)}
+    return forms
+
+
+def forecast_chosen(history: pd.DataFrame, freq: str, choice: Mapping[str, Pick], h: int) -> pd.DataFrame:
+    """Fit each series' pick on ``history`` (``unique_id, ds, y``) and forecast ``h`` periods.
+
+    Returns ``unique_id, ds, model, form, mean, lo-80, hi-80, lo-95, hi-95``. ``form`` is the form that was
+    fit: a fixed pick's own, or whatever AutoETS or AutoARIMA settled on for this history.
+    """
+    frames = []
+    for name, engine in _fitted(history, freq, choice):
         out = pd.DataFrame(engine.predict(h=h, level=list(LEVELS)))
         uids: Any = engine.uids  # pandas or polars, depending on the input frame
-        forms = {str(uid): _form(engine.fitted_[i, 0]) for i, uid in enumerate(uids)}
+        forms = {str(uid): fixed_form(name, engine.fitted_[i, 0])["form"] for i, uid in enumerate(uids)}
         alias = next(
             col
             for col in out.columns
@@ -132,7 +202,7 @@ def forecast_chosen(history: pd.DataFrame, freq: str, choice: dict[str, str], h:
     return result.sort_values(by=["unique_id", "ds"], kind="mergesort", ignore_index=True)
 
 
-def predict_rows(history: pd.DataFrame, rows: pd.DataFrame, choice: dict[str, str]) -> pd.DataFrame:
+def predict_rows(history: pd.DataFrame, rows: pd.DataFrame, choice: Mapping[str, Pick]) -> pd.DataFrame:
     """Forecasts for every row of ``rows`` (``ds, series, freq``) from ``history`` (the same plus ``value``).
 
     Rows must continue each series straight after its history. Returns, in the order of ``rows``:
@@ -295,13 +365,17 @@ class ForecastRun:
 
 
 def run_forecast(
-    warehouse: Path, choice_path: Path = MODEL_CHOICE, final_test: Path = FINAL_TEST
+    warehouse: Path,
+    choice_path: Path = MODEL_CHOICE,
+    final_test: Path = FINAL_TEST,
+    forms_path: Path = MODEL_FORMS,
 ) -> ForecastRun:
-    """Refit the reviewed models on every closed period, forecast, rebuild totals and store everything."""
+    """Refit the reviewed models in their reviewed forms on every closed period, forecast, rebuild totals and
+    store everything."""
     choice = load_choice(choice_path)
+    picks = load_forms(choice, forms_path)
     raw = load_raw(warehouse)
     frame = pd.concat([monthly_long(raw), weekly_long(raw)], ignore_index=True)
-    picks = {uid: spec["chosen"] for uid, spec in choice.items()}
     steps = {"monthly": HORIZON["monthly"] + DRIVER_LEAD, "weekly": HORIZON["weekly"]}
     forecasts = pd.concat(
         [
@@ -326,6 +400,9 @@ def run_forecast(
 
     tested = json.loads(final_test.read_text(encoding="utf-8")) if final_test.is_file() else {}
     deployed = dict(zip(forecasts["unique_id"], forecasts["form"], strict=True))
+    unreviewed = sorted(uid for uid, spec in choice.items() if deployed.get(uid) != reviewed_form(spec))
+    if unreviewed:
+        raise ValueError(f"the refit settled on a form nobody reviewed for {unreviewed}; nothing was stored")
     models = pd.DataFrame(
         [
             {
@@ -344,7 +421,6 @@ def run_forecast(
         ]
     )
     stamp = utcnow()
-    choice_hash = hashlib.sha256(choice_path.read_bytes()).hexdigest()
     weeks = complete_weeks(raw)
     meta = pd.DataFrame(
         [
@@ -353,7 +429,8 @@ def run_forecast(
                 "origin": origin,
                 "last_complete_week": str(timestamp(weeks["week_start"].max()).date()),
                 "generated_at": stamp,
-                "model_choice_sha256": choice_hash,
+                "model_choice_sha256": hashlib.sha256(choice_path.read_bytes()).hexdigest(),
+                "model_forms_sha256": hashlib.sha256(forms_path.read_bytes()).hexdigest(),
             }
         ]
     )

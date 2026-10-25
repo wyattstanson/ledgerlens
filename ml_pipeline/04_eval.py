@@ -41,7 +41,7 @@ def _(mo):
 
     from ledgerlens.fpa import forecast as F
     from ledgerlens.fpa import forecast_eval as E
-    from ledgerlens.fpa.forecast_series import SEASON
+    from ledgerlens.fpa.forecast_series import SEASON, to_statsforecast
 
     HERE = Path(mo.notebook_dir() or Path.cwd() / "ml_pipeline")
     sys.path.insert(0, str(HERE))
@@ -71,6 +71,7 @@ def _(mo):
         pd,
         picks,
         plt,
+        to_statsforecast,
         train,
     )
 
@@ -268,18 +269,39 @@ def _(HERE, SPLITS, final, guard, pd, plt):
 def _(mo):
     mo.md(r"""
     ## Step 15: deployment
-    The reviewed choice (`model_choice.json`) plus `ledgerlens.fpa.forecast_series` is the whole pipeline:
-    `run_forecast` refits each chosen model on every closed period and stores forecasts, rebuilt totals and the
-    profiles behind them in the warehouse. Refitting is deterministic, so running it twice must give identical
-    forecasts; that is the reload check.
+    The reviewed choice (`model_choice.json`), the form each model had when it was reviewed and scored in step 14
+    (`model_forms.json`, written here from the training rows) and `ledgerlens.fpa.forecast_series` are the whole
+    pipeline: `run_forecast` refits each chosen model in that form on every closed period, re-estimating its
+    coefficients only, and stores forecasts, rebuilt totals and the profiles behind them in the warehouse.
+    Refitting is deterministic, so running it twice must give identical forecasts; that is the reload check.
     """)
     return
 
 
 @app.cell
-def _(F, HERE, WAREHOUSE, duckdb, guard, pd, plt):
-    first = F.run_forecast(WAREHOUSE, HERE / "model_choice.json", HERE / "final_test.json")
-    second = F.run_forecast(WAREHOUSE, HERE / "model_choice.json", HERE / "final_test.json")
+def _(F, HERE, SPLITS, WAREHOUSE, duckdb, guard, json, pd, picks, plt, to_statsforecast, train):
+    # The form each chosen model settles on for the training rows: the one reviewed at Gate C and scored in step 14.
+    _forms = {
+        **F.fit_forms(to_statsforecast(train, "monthly"), "monthly", picks),
+        **F.fit_forms(to_statsforecast(train, "weekly"), "weekly", picks),
+    }
+    (HERE / "model_forms.json").write_text(
+        json.dumps(_forms, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    # Refit in those fixed forms on the training rows, they must give the step 14 forecasts again. Only the stored
+    # forecasts are read, not the actuals beside them.
+    _stored = pd.read_parquet(
+        SPLITS / "final_test_predictions.parquet", columns=["unique_id", "ds", "freq", "chosen"]
+    )
+    _again = F.predict_rows(train, _stored.rename(columns={"unique_id": "series"}), _forms)
+    form_match = float(((_again["chosen"] - _stored["chosen"]).abs() / _stored["chosen"].abs()).max())
+    assert form_match < 0.01, (
+        f"the fixed forms do not reproduce the step 14 forecasts ({form_match:.2%} apart)"
+    )
+
+    _paths = (HERE / "model_choice.json", HERE / "final_test.json", HERE / "model_forms.json")
+    first = F.run_forecast(WAREHOUSE, *_paths)
+    second = F.run_forecast(WAREHOUSE, *_paths)
     _cols = ["unique_id", "ds", "mean", "lo-80", "hi-80", "lo-95", "hi-95"]
     reproducible = first.forecasts[_cols].equals(second.forecasts[_cols]) and first.totals.equals(
         second.totals
@@ -331,6 +353,7 @@ def _(F, HERE, WAREHOUSE, duckdb, guard, pd, plt):
         _axes[1].plot(_p["ds"], _p["mean"], color=_colour, label=_uid.split("|")[1])
         _axes[1].fill_between(_p["ds"], _p["lo-80"], _p["hi-80"], color=_colour, alpha=0.2)
     _axes[1].set_title("13-week cash forecast with 80% intervals")
+    _axes[1].tick_params(axis="x", labelrotation=30, labelsize=8)
     _axes[1].legend(fontsize=7)
     guard.fig(
         15,
@@ -345,9 +368,9 @@ def _(F, HERE, WAREHOUSE, duckdb, guard, pd, plt):
         state_dir=HERE,
     )
     tree_window = f"{_months[0]:%Y-%m} to {_months[-1]:%Y-%m}"
-    _models = first.models
-    form_changes = _models.loc[_models["reviewed_form"] != _models["deployed_form"], "unique_id"].tolist()
-    return first, form_changes, reproducible, tree_error, tree_window
+    forms_kept = int((first.models["reviewed_form"] == first.models["deployed_form"]).sum())
+    assert forms_kept == len(first.models), "a deployed form differs from the reviewed one"
+    return first, form_match, forms_kept, reproducible, tree_error, tree_window
 
 
 @app.cell
@@ -360,16 +383,29 @@ def _(mo):
     - **Each quarter**: re-score the last 3 closed months per series; if a chosen model loses to SeasonalNaive on
       2 consecutive quarters, flag that series for review.
     - **Input drift**: a robust z-score above 5 on a new month (the step 4 spike rule) is flagged, not dropped.
-    - **Retraining** reuses this pipeline from step 1 (new EDA, a new frozen test window, all four gates). The
-      refit in step 15 keeps each series' reviewed model; AutoETS and AutoARIMA may settle on another form of
-      it on the longer history, and `fpa.forecast_models` records both the reviewed and the deployed form.
+    - **Forms**: the refit in step 15 keeps each series' reviewed model and form and re-estimates coefficients
+      only. Each quarter, also note which form AutoETS or AutoARIMA would pick on all closed periods; a different
+      form is a candidate for the next review, never applied directly (left free, AutoARIMA dropped the yearly
+      pattern of weekly collections on the longer history).
+    - **Retraining** reuses this pipeline from step 1 (new EDA, a new frozen test window, all four gates).
     """)
     return
 
 
 @app.cell
 def _(
-    HERE, by_h, cover, error_notes, final, first, form_changes, reproducible, tree_error, tree_window, worst
+    HERE,
+    by_h,
+    cover,
+    error_notes,
+    final,
+    first,
+    form_match,
+    forms_kept,
+    reproducible,
+    tree_error,
+    tree_window,
+    worst,
 ):
     _pipeline = HERE / "PIPELINE.md"
     _text = _pipeline.read_text(encoding="utf-8")
@@ -382,9 +418,9 @@ def _(
         f"{final['coverage_80']:.0%} at 80%, {final['coverage_95']:.0%} at 95%. Per series in final_test.json.",
         15: f"run_forecast refits the reviewed models on every closed period (origin {first.origin}): fpa.forecasts, "
         "fpa.forecast_totals, fpa.forecast_profiles, fpa.forecast_models, fpa.forecast_history; refit reproduces "
-        f"exactly: {reproducible}; on all closed months AutoETS/AutoARIMA settled on another form of the same "
-        f"model for {len(form_changes)} of {len(first.models)} series ({', '.join(form_changes) or 'none'}), "
-        "both forms in fpa.forecast_models; "
+        f"exactly: {reproducible}; each model keeps the form reviewed at Gate C and scored in step 14 "
+        f"(model_forms.json; {forms_kept} of {len(first.models)} deployed forms match, and refit on the training "
+        f"rows the fixed forms give the step 14 forecasts again to within {form_match:.2%}); "
         f"driver-tree rebuild error out of sample ({tree_window}) "
         f"{tree_error['collected_premium']:.1%} / {tree_error['claims_paid']:.1%} / {tree_error['lae']:.1%} "
         "(collections / claims paid / LAE). Inference input: closed months of fpa.drivers and complete weeks of "

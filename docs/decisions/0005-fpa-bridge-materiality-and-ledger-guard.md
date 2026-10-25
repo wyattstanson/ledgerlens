@@ -58,12 +58,14 @@ answer lineage check.
    requires a percentage to cite a ratio or share and a dollar amount to cite a USD value. A single digit glued
    to a word ("Q3", "v2") is still read as an identifier.
 10. **Forecasting through the review gates.** Models are chosen only in `ml_pipeline/` under the ml-pipeline
-    skill, with the owner's approval at each gate (`ml_pipeline/PIPELINE.md`). Production never re-chooses
-    the model: `fpa/forecast.py` refits the reviewed choice (`ml_pipeline/model_choice.json`) on every closed
-    period. AutoETS and AutoARIMA still search their own form on the longer history, so the deployed form can
-    differ from the reviewed one; `fpa.forecast_models` records both. Data preparation lives in
-    `fpa/forecast_series.py` so the notebooks and production cannot diverge. Totals are rebuilt from driver
-    forecasts through the driver tree and carry point values only.
+    skill, with the owner's approval at each gate (`ml_pipeline/PIPELINE.md`). Production never re-chooses:
+    `fpa/forecast.py` refits each reviewed model (`ml_pipeline/model_choice.json`) in the exact form that was
+    reviewed and scored in the final test (`ml_pipeline/model_forms.json`) on every closed period,
+    re-estimating coefficients only, and refuses to store a forecast from any other form. Left to search again
+    on the longer history, AutoARIMA dropped the yearly pattern of weekly collections; a new form is a
+    candidate for the next review, not applied directly. Data preparation lives in `fpa/forecast_series.py` so
+    the notebooks and production cannot diverge. Totals are rebuilt from driver forecasts through the driver
+    tree and carry point values only.
 11. **Where forecasts are computed.** statsforecast imports statsmodels, whose compiled module Windows App
     Control blocks (intermittently) on the dev machine. Forecasts are therefore computed on Linux (CI, WSL,
     later the hosted job), stored in the warehouse, and only read by the `fpa.forecast` tool, which loads no

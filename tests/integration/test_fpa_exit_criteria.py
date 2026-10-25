@@ -255,6 +255,25 @@ def test_the_forecast_tool_says_when_no_forecast_has_been_generated(scratch):
     assert "forecast fpa" in result.data["reason"]
 
 
+def test_a_forecast_from_a_form_nobody_reviewed_is_refused(scratch, tmp_path):
+    pytest.importorskip("statsforecast.models", reason="statsforecast cannot load here")
+    from ledgerlens.fpa.forecast import MODEL_FORMS, run_forecast  # noqa: PLC0415
+
+    forms = json.loads(MODEL_FORMS.read_text(encoding="utf-8"))
+    # The label still names the reviewed form, but these orders fit the one AutoARIMA found on more weeks.
+    forms["cash_weekly|collected_premium"] |= {"order": [0, 1, 3], "seasonal_order": [0, 0, 0]}
+    tampered = tmp_path / "model_forms.json"
+    tampered.write_text(json.dumps(forms), encoding="utf-8")
+    with pytest.raises(ValueError, match=r"nobody reviewed for \['cash_weekly\|collected_premium'\]"):
+        run_forecast(scratch, forms_path=tampered)
+    with connect(scratch, read_only=True) as conn:
+        stored = conn.execute(
+            "select count(*) from information_schema.tables "
+            "where table_schema = 'fpa' and table_name = 'forecasts'"
+        ).fetchone()
+    assert stored == (0,)
+
+
 def test_forecasts_from_the_reviewed_models_are_stored_and_cited(scratch):
     # statsforecast imports statsmodels, whose compiled module Windows App Control blocks on the dev machine;
     # CI runs this on Linux (ADR 0005).
@@ -263,6 +282,7 @@ def test_forecasts_from_the_reviewed_models_are_stored_and_cited(scratch):
 
     run = run_forecast(scratch)
     assert run.forecasts["unique_id"].nunique() == 12
+    assert run.models["deployed_form"].tolist() == run.models["reviewed_form"].tolist()
     counts = run.forecasts.loc[run.forecasts["in_horizon"]].groupby("freq")["unique_id"].value_counts()
     assert set(counts.loc["monthly"]) == {HORIZON["monthly"]} and set(counts.loc["weekly"]) == {
         HORIZON["weekly"]
