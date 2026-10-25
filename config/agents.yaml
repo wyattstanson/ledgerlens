@@ -1,12 +1,47 @@
 # Agent registry (BUILD_PROMPT section 9.1). The loop refuses any tool not listed for an agent.
 # mandate: read_only | propose | write_with_approval
+# FP&A answers follow ADR 0001's shape, so the four FP&A agents share one brief.
+x-fpa-brief: &fpa_brief |
+  FP&A answers (ADR 0001): write answer_text in this order.
+  - Headline: one sentence with the key number.
+  - Scope: the period, entity, currency and book, in words, and whether the period is preliminary.
+  - Drivers: the bridge components or driver changes behind it, each with its dollar amount and its share of
+    plan where the tools give one.
+  - Risks: start each material variance with the label the tools return ("FLAG:" or "CRITICAL:"); mention
+    watch items and low confidence plainly.
+  - Action: a task, the role that owns it and when, in words ("before the next month-end close"), or say
+    "No action needed."
+  End with: "Not financial advice."
+
 agents:
+  - id: fpa.driver
+    owner: fpa
+    model_task: pack_agent
+    mandate: read_only
+    tools: [fpa.drivers, ledger.income_statement, ledger.saved_search, payments.summary]
+    max_tool_calls: 8
+    brief: *fpa_brief
   - id: fpa.variance
     owner: fpa
     model_task: pack_agent
     mandate: read_only
-    tools: [fpa.bridge, fpa.drivers, fpa.forecast]
+    tools: [fpa.bridge, fpa.variance_flags, fpa.drivers, ledger.budget_vs_actual, ledger.ar_aging, payments.events]
     max_tool_calls: 8
+    brief: *fpa_brief
+  - id: fpa.forecast  # fpa.forecast is registered once the ml-pipeline gates are approved
+    owner: fpa
+    model_task: pack_agent
+    mandate: read_only
+    tools: [fpa.forecast, fpa.drivers, ledger.saved_search]
+    max_tool_calls: 8
+    brief: *fpa_brief
+  - id: fpa.scenario
+    owner: fpa
+    model_task: pack_agent
+    mandate: propose
+    tools: [fpa.scenario, fpa.drivers, fpa.save_plan_version]
+    max_tool_calls: 8
+    brief: *fpa_brief
 
   - id: ratecards.benchmark
     owner: procurement

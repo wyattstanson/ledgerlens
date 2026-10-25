@@ -55,7 +55,7 @@ members = []
 [tool.ruff]
 line-length = 110
 target-version = "py313"
-extend-exclude = ["transform/target", "transform/dbt_packages", "data", "docs/BUILD_PROMPT.md"]
+extend-exclude = ["transform/target", "transform/dbt_packages", "data", "docs/BUILD_PROMPT.md", "ml_pipeline/guard.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "PL", "RUF", "S"]
@@ -66,6 +66,8 @@ max-args = 10
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "PLR2004", "S603", "S607", "S311"]
+# marimo notebooks: prose in f-strings, in-cell imports, display expressions, cells take every name they use
+"ml_pipeline/*.py" = ["E501", "S101", "PLR0915", "PLR2004", "PLC0415", "B018", "PLR1711", "PLR0913", "PLR0917"]
 
 [tool.pyright]
 typeCheckingMode = "standard"
@@ -97,4 +99,8 @@ dev = [
     "pytest>=9.1",
     "pytest-cov>=7.1",
     "ruff>=0.17",
+]
+ml = [
+    "marimo>=0.25.1",
+    "matplotlib>=3.11.2",
 ]

@@ -1,0 +1,138 @@
+{
+  "approved_claims|homeowners": {
+    "form": "SeasonalNaive",
+    "model": "SeasonalNaive"
+  },
+  "approved_claims|personal_auto": {
+    "form": "SeasonalNaive",
+    "model": "SeasonalNaive"
+  },
+  "approved_claims|small_commercial": {
+    "form": "ARIMA(0,0,0)(0,0,0)[12]",
+    "include_drift": false,
+    "include_mean": true,
+    "model": "AutoARIMA",
+    "order": [
+      0,
+      0,
+      0
+    ],
+    "seasonal_order": [
+      0,
+      0,
+      0
+    ]
+  },
+  "cash_weekly|claims_paid": {
+    "form": "ARIMA(0,0,0)(0,0,0)[52]",
+    "include_drift": false,
+    "include_mean": true,
+    "model": "AutoARIMA",
+    "order": [
+      0,
+      0,
+      0
+    ],
+    "seasonal_order": [
+      0,
+      0,
+      0
+    ]
+  },
+  "cash_weekly|collected_premium": {
+    "form": "ARIMA(3,1,1)(0,1,0)[52]",
+    "include_drift": false,
+    "include_mean": false,
+    "model": "AutoARIMA",
+    "order": [
+      3,
+      1,
+      1
+    ],
+    "seasonal_order": [
+      0,
+      1,
+      0
+    ]
+  },
+  "due_premium|homeowners": {
+    "form": "ARIMA(1,1,0)(0,1,0)[12]",
+    "include_drift": false,
+    "include_mean": false,
+    "model": "AutoARIMA",
+    "order": [
+      1,
+      1,
+      0
+    ],
+    "seasonal_order": [
+      0,
+      1,
+      0
+    ]
+  },
+  "due_premium|personal_auto": {
+    "damped": false,
+    "ets": "MAN",
+    "form": "ETS(M,A,N)",
+    "model": "AutoETS"
+  },
+  "due_premium|small_commercial": {
+    "form": "ARIMA(0,0,0)(0,1,0)[12]",
+    "include_drift": true,
+    "include_mean": false,
+    "model": "AutoARIMA",
+    "order": [
+      0,
+      0,
+      0
+    ],
+    "seasonal_order": [
+      0,
+      1,
+      0
+    ]
+  },
+  "opex|all": {
+    "form": "ARIMA(0,0,0)(0,0,0)[12]",
+    "include_drift": false,
+    "include_mean": true,
+    "model": "AutoARIMA",
+    "order": [
+      0,
+      0,
+      0
+    ],
+    "seasonal_order": [
+      0,
+      0,
+      0
+    ]
+  },
+  "severity|homeowners": {
+    "form": "SeasonalNaive",
+    "model": "SeasonalNaive"
+  },
+  "severity|personal_auto": {
+    "form": "ARIMA(0,0,1)(0,0,0)[12]",
+    "include_drift": false,
+    "include_mean": true,
+    "model": "AutoARIMA",
+    "order": [
+      0,
+      0,
+      1
+    ],
+    "seasonal_order": [
+      0,
+      0,
+      0
+    ]
+  },
+  "severity|small_commercial": {
+    "damped": true,
+    "ets": "MAN",
+    "form": "ETS(M,Ad,N)",
+    "model": "AutoETS"
+  }
+}

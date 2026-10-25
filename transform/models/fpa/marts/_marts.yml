@@ -1,0 +1,33 @@
+version: 2
+
+models:
+  - name: fpa_premium_monthly
+    description: Premium billed (by due month) and collected (by paid month) per line and payment method.
+    columns:
+      - name: row_key
+        data_tests: [unique, not_null]
+  - name: fpa_claims_monthly
+    description: Claims approved (event basis) and paid (cash basis) per line and channel, with handling cost.
+    columns:
+      - name: row_key
+        data_tests: [unique, not_null]
+  - name: fpa_cash_monthly
+    description: Operating cash per period from the ledger's cash account, by posting family.
+    columns:
+      - name: month
+        data_tests: [unique, not_null]
+  - name: fpa_cash_weekly
+    description: Weekly premium collected and claims paid from the payments feed (13-week forecast input).
+    columns:
+      - name: week_start
+        data_tests: [unique, not_null]
+  - name: fpa_ledger_monthly
+    description: Posted amount per period and account.
+    columns:
+      - name: row_key
+        data_tests: [unique, not_null]
+  - name: fpa_ar_aging
+    description: Open premium receivables at the latest period end, with days past due.
+    columns:
+      - name: instalment_id
+        data_tests: [unique, not_null]

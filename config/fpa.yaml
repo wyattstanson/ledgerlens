@@ -1,0 +1,60 @@
+# Payments-aware FP&A (BUILD_PROMPT section 10, ADR 0001). Every value is a synthetic assumption.
+world:
+  policies: 20000 # in force at the window start
+  months: 36
+  end_month: "2026-09"
+  new_business_per_month: 230
+  renewal_rate: 0.88
+  annual_rate_change: 0.05
+  pay_plans: { annual: 0.25, quarterly: 0.25, monthly: 0.5 }
+  approval_lag_median_days: 18
+  opex_monthly: 900000
+  opex_noise: 0.04
+  lines:
+    personal_auto:
+      { share: 0.55, annual_premium: 1400, premium_sigma: 0.3, claim_frequency: 0.0105, seasonal_amplitude: 0.18,
+        seasonal_peak_month: 1, severity_median: 4200, severity_sigma: 0.9, multiparty_share: 0.0 }
+    homeowners:
+      { share: 0.35, annual_premium: 1650, premium_sigma: 0.3, claim_frequency: 0.0055, seasonal_amplitude: 0.30,
+        seasonal_peak_month: 5, severity_median: 8500, severity_sigma: 1.1, multiparty_share: 0.15 }
+    small_commercial:
+      { share: 0.10, annual_premium: 5200, premium_sigma: 0.45, claim_frequency: 0.006, seasonal_amplitude: 0.0,
+        seasonal_peak_month: 1, severity_median: 14000, severity_sigma: 1.2, multiparty_share: 0.0 }
+  methods:
+    card: { mix: 0.34, on_time_rate: 0.93, late_median_days: 6, nonpayment_rate: 0.10 }
+    ach: { mix: 0.30, on_time_rate: 0.97, late_median_days: 4, nonpayment_rate: 0.08 }
+    check: { mix: 0.12, on_time_rate: 0.80, late_median_days: 12, nonpayment_rate: 0.12 }
+    wallet: { mix: 0.14, on_time_rate: 0.95, late_median_days: 5, nonpayment_rate: 0.10 }
+    agency_bill: { mix: 0.10, on_time_rate: 0.70, late_median_days: 25, nonpayment_rate: 0.06 }
+  channels:
+    check: { mix: 0.40, lag_median_days: 6, lag_sigma: 0.5, handling_cost: 38, return_rate: 0.012 }
+    ach: { mix: 0.30, lag_median_days: 3, lag_sigma: 0.4, handling_cost: 14, return_rate: 0.0 }
+    debit_push: { mix: 0.12, lag_median_days: 1, lag_sigma: 0.4, handling_cost: 9, return_rate: 0.0 }
+    wallet: { mix: 0.10, lag_median_days: 1, lag_sigma: 0.4, handling_cost: 8, return_rate: 0.0 }
+    instant: { mix: 0.08, lag_median_days: 0, lag_sigma: 0.3, handling_cost: 6, return_rate: 0.0 }
+  # Deliberate plan misses: the plan uses the base values above; actuals move as follows.
+  planted:
+    volume_line: personal_auto
+    volume_start_month: 18
+    volume_new_business_lift: 0.35
+    severity_line: homeowners
+    severity_start_month: 24
+    severity_lift: 0.15
+    mix_start_month: 12
+    mix_ach_to_card: 0.25
+    timing_channel: check
+    timing_actual_lag_median_days: 9
+    lae_channel: check
+    lae_actual_handling_cost: 44
+
+fiscal_year_start_month: 1 # ADR 0001: set here; nothing assumes January
+
+# ADR 0001 materiality, calibrated for $10M to $100M revenue (the generator reports annual premium).
+materiality:
+  financial_statement: { pct: 0.05, usd: 50000 }
+  operating: { pct: 0.03, usd: 25000 }
+  immaterial: { pct: 0.02, usd: 10000 }
+
+aging_buckets_days: [30, 60, 90] # current, monitor, escalate; older is stale and needs management review
+one_time_items: [] # "YYYY-MM:measure" entries documented as one-off; never flagged
+scenario_shift_share: 0.30 # built-in scenario: move this share of claims from check to instant payment

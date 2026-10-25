@@ -118,3 +118,38 @@ def test_record_lineage_rejects_non_finite_values(db: Path):
             source_tables=[],
             row_ids=[],
         )
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Claims rose USD9400000 versus plan.", "See variance_9400000_ for detail.", "Claims rose 9.4 million."],
+)
+def test_numbers_glued_to_words_or_written_with_a_scale_word_are_checked(text):
+    failures = verify_answer(text, [ref(0.0)], {"ln_1": 0.0})
+    assert len(failures) == 1 and "does not match any cited number" in failures[0]
+
+
+def test_scale_words_after_a_cited_number_pass():
+    assert verify_answer("Claims rose 9.4 million.", [ref(9_400_000.0)], {"ln_1": 9_400_000.0}) == []
+
+
+@pytest.mark.parametrize("text", ["Claims rose by twelve million dollars.", "Over a hundred claims moved."])
+def test_numbers_above_ten_in_words_are_rejected(text):
+    failures = verify_answer(text, [], {})
+    assert failures and all("number in words" in f for f in failures)
+
+
+def test_small_counts_in_words_still_pass():
+    assert verify_answer("Three vendors and one panel.", [], {}) == []
+
+
+def test_a_percentage_cannot_cite_a_count_or_a_dollar_amount():
+    for unit in ("count", "USD"):
+        failures = verify_answer("Up 6%.", [ref(6.0, unit=unit)], {"ln_1": 6.0})
+        assert failures == ["'6%' in the answer does not match any cited number"], unit
+    assert verify_answer("Up 6 percent.", [ref(0.06, unit="ratio")], {"ln_1": 0.06}) == []
+
+
+def test_a_dollar_amount_must_cite_a_currency():
+    failures = verify_answer("Saved $40.", [ref(40.0, unit="count")], {"ln_1": 40.0})
+    assert failures == ["'$40' in the answer does not match any cited number"]

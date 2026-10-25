@@ -8,8 +8,15 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import duckdb
+
+DuckConfig = dict[str, str | bool | int | float | list[str]]
+# For connections that only read the warehouse: no file reads, getenv(), ATTACH or extensions. DuckDB
+# refuses a second connection to one file with a different configuration while the first is open, so
+# readers that use this must not overlap a plain connection in the same process.
+NO_EXTERNAL_ACCESS: DuckConfig = {"enable_external_access": False}
 
 AUDIT_DDL = """
 create schema if not exists audit;
@@ -103,14 +110,25 @@ def utcnow() -> datetime:
 
 
 @contextmanager
-def connect(db_path: Path, *, read_only: bool = False) -> Iterator[duckdb.DuckDBPyConnection]:
+def connect(
+    db_path: Path, *, read_only: bool = False, config: DuckConfig | None = None
+) -> Iterator[duckdb.DuckDBPyConnection]:
     if not read_only:
         db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = duckdb.connect(str(db_path), read_only=read_only)
+    conn = duckdb.connect(str(db_path), read_only=read_only, config=config or {})
     try:
         yield conn
     finally:
         conn.close()
+
+
+def fetch_dicts(
+    conn: duckdb.DuckDBPyConnection, sql: str, params: list[Any] | None = None
+) -> list[dict[str, Any]]:
+    """Rows of a query as dicts keyed by column name."""
+    cursor = conn.execute(sql, params or [])
+    columns = [d[0] for d in cursor.description]
+    return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
 
 
 def ensure_audit_schema(db_path: Path) -> None:

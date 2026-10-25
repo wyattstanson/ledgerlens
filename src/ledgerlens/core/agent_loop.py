@@ -38,8 +38,9 @@ AGENT_SYSTEM = """You are a LedgerLens analyst agent. You plan tool calls and ex
 Rules:
 - You never compute numbers yourself. Every number in answer_text must be copied from a tool result,
   and listed in numbers[] with the exact value, unit and lineage_id the tool returned.
-- Write small counts in words ("three vendors") and keep dates and periods out of answer_text,
-  because every digit in answer_text is checked against numbers[].
+- Write counts up to ten in words ("three vendors"), write every larger number in digits, and keep
+  dates and periods out of answer_text, because every number in answer_text is checked against
+  numbers[]: a percentage must cite a ratio or share, and a dollar amount must cite a USD value.
 - If the tools cannot answer the question, say so plainly instead of estimating.
 - State assumptions in assumptions[]. Put any change you recommend in proposed_actions[]; you cannot
   make changes yourself, a human approves or rejects each proposal.
@@ -106,7 +107,7 @@ class _Run:
         self.run_id = agent_run_id
         self.result = AgentRunResult(agent_run_id=agent_run_id, status=RunStatus.STOPPED, answer=None)
 
-    def call_tool(self, block: Any) -> dict[str, Any]:
+    def call_tool(self, block: Any) -> dict[str, Any]:  # noqa: PLR0911 (one exit per refusal)
         tool: Tool | None = self.deps.tools.by_api_name(block.name)
         if tool is None:
             return _tool_result(block.id, f"Unknown tool {block.name}.", is_error=True)
@@ -117,6 +118,14 @@ class _Run:
 
         raw_input = dict(block.input)
         if decision is Decision.PROPOSE:
+            # Validate here too: strict mode is enforced by the API, and a reviewer should only ever see
+            # arguments the tool would accept.
+            try:
+                tool.input_model.model_validate(raw_input)
+            except ValidationError as exc:
+                return _tool_result(
+                    block.id, f"Invalid input: {exc.errors(include_url=False)}", is_error=True
+                )
             return _tool_result(block.id, self._propose(tool, raw_input))
         if decision is Decision.EXECUTE_IF_APPROVED:
             try:
@@ -217,10 +226,12 @@ def _loop(run: _Run, question: str, tool_defs: list[dict[str, Any]]) -> None:
     schema = FinalAnswer.model_json_schema()
     retried = False
     max_turns = run.agent.max_tool_calls + 3
+    brief = run.agent.brief.strip()
+    system = f"{AGENT_SYSTEM}\n\n{brief}" if brief else AGENT_SYSTEM
     for _ in range(max_turns):
         response = run.deps.llm.create(
             task=run.agent.model_task,
-            system=AGENT_SYSTEM,
+            system=system,
             messages=messages,
             tools=tool_defs,
             output_schema=schema,

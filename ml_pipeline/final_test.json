@@ -1,0 +1,142 @@
+{
+  "median_chosen_mase": 0.6390863362826306,
+  "median_baseline_mase": 1.0103042540980023,
+  "beats_baseline": 8,
+  "series_count": 12,
+  "coverage_80": 0.8087606837606837,
+  "coverage_95": 0.9594017094017094,
+  "series": {
+    "approved_claims|homeowners": {
+      "freq": "monthly",
+      "periods": 6,
+      "chosen_mase": 1.2592592592592593,
+      "chosen_mape": 0.13524957545106006,
+      "baseline_mase": 1.2592592592592593,
+      "baseline_mape": 0.13524957545106006,
+      "coverage_80": 0.5,
+      "coverage_95": 1.0,
+      "beats_baseline": false
+    },
+    "approved_claims|personal_auto": {
+      "freq": "monthly",
+      "periods": 6,
+      "chosen_mase": 0.7144927536231883,
+      "chosen_mape": 0.075017565232271,
+      "baseline_mase": 0.7144927536231883,
+      "baseline_mape": 0.075017565232271,
+      "coverage_80": 0.8333333333333334,
+      "coverage_95": 0.8333333333333334,
+      "beats_baseline": false
+    },
+    "approved_claims|small_commercial": {
+      "freq": "monthly",
+      "periods": 6,
+      "chosen_mase": 0.6065084340946407,
+      "chosen_mape": 0.2533657912968256,
+      "baseline_mase": 0.7727272727272727,
+      "baseline_mape": 0.3266492766492766,
+      "coverage_80": 0.6666666666666666,
+      "coverage_95": 1.0,
+      "beats_baseline": true
+    },
+    "cash_weekly|claims_paid": {
+      "freq": "weekly",
+      "periods": 13,
+      "chosen_mase": 0.9445002607244272,
+      "chosen_mape": 0.23122742851531705,
+      "baseline_mase": 1.025401716155059,
+      "baseline_mape": 0.25800338149906066,
+      "coverage_80": 0.8461538461538461,
+      "coverage_95": 0.9230769230769231,
+      "beats_baseline": true
+    },
+    "cash_weekly|collected_premium": {
+      "freq": "weekly",
+      "periods": 13,
+      "chosen_mase": 0.6716642384706204,
+      "chosen_mape": 0.0428370845866363,
+      "baseline_mase": 0.9407953788545613,
+      "baseline_mape": 0.057812592827848036,
+      "coverage_80": 0.6923076923076923,
+      "coverage_95": 0.9230769230769231,
+      "beats_baseline": true
+    },
+    "due_premium|homeowners": {
+      "freq": "monthly",
+      "periods": 6,
+      "chosen_mase": 0.08808927249179539,
+      "chosen_mape": 0.004444198131309242,
+      "baseline_mase": 1.0811744491427,
+      "baseline_mape": 0.05581174375453593,
+      "coverage_80": 1.0,
+      "coverage_95": 1.0,
+      "beats_baseline": true
+    },
+    "due_premium|personal_auto": {
+      "freq": "monthly",
+      "periods": 6,
+      "chosen_mase": 0.5361086392515834,
+      "chosen_mape": 0.03269635958449455,
+      "baseline_mase": 1.238161661717469,
+      "baseline_mape": 0.0756381624551979,
+      "coverage_80": 0.6666666666666666,
+      "coverage_95": 1.0,
+      "beats_baseline": true
+    },
+    "due_premium|small_commercial": {
+      "freq": "monthly",
+      "periods": 6,
+      "chosen_mase": 0.30485410727383216,
+      "chosen_mape": 0.018411476840957265,
+      "baseline_mase": 0.6964523715520171,
+      "baseline_mape": 0.04226061290669786,
+      "coverage_80": 0.8333333333333334,
+      "coverage_95": 1.0,
+      "beats_baseline": true
+    },
+    "opex|all": {
+      "freq": "monthly",
+      "periods": 6,
+      "chosen_mase": 0.5257120003472082,
+      "chosen_mape": 0.021773871932480027,
+      "baseline_mase": 1.0869530787241222,
+      "baseline_mape": 0.04475421665199091,
+      "coverage_80": 1.0,
+      "coverage_95": 1.0,
+      "beats_baseline": true
+    },
+    "severity|homeowners": {
+      "freq": "monthly",
+      "periods": 6,
+      "chosen_mase": 0.8311108786833342,
+      "chosen_mape": 0.26085040345012905,
+      "baseline_mase": 0.8311108786833342,
+      "baseline_mape": 0.26085040345012905,
+      "coverage_80": 1.0,
+      "coverage_95": 1.0,
+      "beats_baseline": false
+    },
+    "severity|personal_auto": {
+      "freq": "monthly",
+      "periods": 6,
+      "chosen_mase": 0.5802404371625619,
+      "chosen_mape": 0.07223585357842723,
+      "baseline_mase": 0.9952067920409453,
+      "baseline_mape": 0.11905654749077438,
+      "coverage_80": 1.0,
+      "coverage_95": 1.0,
+      "beats_baseline": true
+    },
+    "severity|small_commercial": {
+      "freq": "monthly",
+      "periods": 6,
+      "chosen_mase": 1.3545115699551202,
+      "chosen_mape": 0.4291882740580723,
+      "baseline_mase": 1.1654940302482577,
+      "baseline_mape": 0.35436069865717545,
+      "coverage_80": 0.6666666666666666,
+      "coverage_95": 0.8333333333333334,
+      "beats_baseline": false
+    }
+  }
+}

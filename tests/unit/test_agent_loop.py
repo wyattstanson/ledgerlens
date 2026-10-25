@@ -263,3 +263,15 @@ def test_unexpected_errors_mark_the_run_and_propagate(db: Path, models_config: M
         run_agent(spec(), "q", user="u", deps=deps)
     with connect(db) as conn:
         assert conn.execute("select status from audit.agent_runs").fetchone() == ("error",)
+
+
+def test_proposals_with_invalid_arguments_never_reach_the_review_queue(db: Path, models_config: ModelsConfig):
+    script = [
+        tool_use_message(("rc__approve_mapping", {"mapping_id": 7, "extra": "x"})),
+        final_answer("No.", []),
+    ]
+    deps, fake = deps_for(db, models_config, script)
+    result = run_agent(spec(Mandate.PROPOSE, tools=("rc.approve_mapping",)), "q", user="u", deps=deps)
+    assert result.approval_ids == []
+    assert deps.approvals.pending() == []
+    assert "Invalid input" in fake.messages.requests[1]["messages"][2]["content"][0]["content"]
