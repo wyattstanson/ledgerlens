@@ -23,17 +23,17 @@ compiled statsmodels module that statsforecast imports.
 | 10 | Model training | approved-gate | AutoETS (median MASE 1.00) and AutoARIMA (0.94) in the same 3-window cross-validation; the forms picked on all training rows are in model_choice.json. |
 | 11 | Hyperparameter tuning | approved-gate | No manual tuning: the Auto models' AICc search on each fold's training rows is the tuning. Choice per series by cross-validated MASE, baseline kept unless beaten: a candidate wins on 9 of 12 series. |
 | 12 | Model evaluation | approved-gate | Figures 12_cv_mase, 12_interval_coverage and 12_cv_forecasts; mean 80% interval coverage 71%, mean 95% coverage 90%. |
-| 13 | Error analysis | done | Scaled error grows with the horizon (monthly chosen 0.65 at 1 month to 1.27 at 6); 4 series hold under 60% at the 80% level. Largest single miss: severity|small_commercial in 2025-08 (112% off, model AutoETS). 5 of the 8 largest percentage misses are claim size, where one large loss dominates a month; the models are not built to predict individual large losses, and no feature available at the forecast origin could. Worst rows listed in the notebook (8). |
-| 14 | Final test | done | Median MASE 0.64 (SeasonalNaive 1.01); the chosen model beats SeasonalNaive on 8 of 12 series; coverage 81% at 80%, 96% at 95%. Per series in final_test.json. |
-| 15 | Deployment | done | run_forecast refits the reviewed models on every closed period (origin 2026-08): fpa.forecasts, fpa.forecast_totals, fpa.forecast_profiles, fpa.forecast_models, fpa.forecast_history; refit reproduces exactly: True; each model keeps the form reviewed at Gate C and scored in step 14 (model_forms.json; 12 of 12 deployed forms match, and refit on the training rows the fixed forms give the step 14 forecasts again to within 0.11%); driver-tree rebuild error out of sample (2026-02 to 2026-07) 1.2% / 3.1% / 8.3% (collections / claims paid / LAE). Inference input: closed months of fpa.drivers and complete weeks of fpa.fpa_cash_weekly, shaped by forecast_series.to_statsforecast. |
-| 16 | Monitoring and retraining plan | done | Plan in 04_eval.py: monthly interval check (Dagster), quarterly re-score against SeasonalNaive, spike flags, retraining from step 1 with all four gates. |
+| 13 | Error analysis | approved-gate | Scaled error grows with the horizon (monthly chosen 0.65 at 1 month to 1.27 at 6); 4 series hold under 60% at the 80% level. Largest single miss: severity|small_commercial in 2025-08 (112% off, model AutoETS). 5 of the 8 largest percentage misses are claim size, where one large loss dominates a month; the models are not built to predict individual large losses, and no feature available at the forecast origin could. Worst rows listed in the notebook (8). |
+| 14 | Final test | approved-gate | Median MASE 0.64 (SeasonalNaive 1.01); the chosen model beats SeasonalNaive on 8 of 12 series; coverage 81% at 80%, 96% at 95%. Per series in final_test.json. |
+| 15 | Deployment | approved-gate | run_forecast refits the reviewed models on every closed period (origin 2026-08): fpa.forecasts, fpa.forecast_totals, fpa.forecast_profiles, fpa.forecast_models, fpa.forecast_history; refit reproduces exactly: True; each model keeps the form reviewed at Gate C and scored in step 14 (model_forms.json; 12 of 12 deployed forms match, and refit on the training rows the fixed forms give the step 14 forecasts again to within 0.11%); driver-tree rebuild error out of sample (2026-02 to 2026-07) 1.2% / 3.1% / 8.3% (collections / claims paid / LAE). Inference input: closed months of fpa.drivers and complete weeks of fpa.fpa_cash_weekly, shaped by forecast_series.to_statsforecast. |
+| 16 | Monitoring and retraining plan | approved-gate | Plan in 04_eval.py: monthly interval check (Dagster), quarterly re-score against SeasonalNaive, spike flags, retraining from step 1 with all four gates. |
 
 ## Phase reviews
 
 - Gate A: approved 2026-10-23
 - Gate B: approved 2026-10-23
 - Gate C: approved 2026-10-24
-- Gate D: pending
+- Gate D: approved 2026-10-25
 
 ## Step 1: data inspection
 
