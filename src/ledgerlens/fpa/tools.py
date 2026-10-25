@@ -6,6 +6,11 @@ adapter ran. FP&A outputs carry a scope (period, entity, currency, book, prelimi
 financial advice" note (ADR 0001). A period that is not in the ledger gets ``found: false``, never a number.
 Saving a scenario as a plan version is the one write, and it needs a human approval of exactly the scenario
 that is current when it runs. All reads use read-only connections with external access off.
+
+The same tools serve either FP&A world (ADR 0005), the insurer or the payment processor: they read the tables
+``run_fpa`` writes for whichever world is loaded, and the run metadata says which world that is, so its scope
+(entity, book) and income statement basis come with every answer. A measure or line from the other world is
+simply not found.
 """
 
 import json
@@ -13,20 +18,25 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Literal
 
+import duckdb
 from pydantic import BaseModel, ConfigDict, Field
 
 from ledgerlens.core.approvals import ApprovalError, ApprovalQueue
 from ledgerlens.core.db import NO_EXTERNAL_ACCESS, connect, fetch_dicts, utcnow
 from ledgerlens.core.lineage import new_id, sha256_text
 from ledgerlens.core.tools import Tool, ToolContext, ToolResult
-from ledgerlens.fpa.config import Line
-from ledgerlens.fpa.ledger_adapter import SavedSearch, ledger
+from ledgerlens.fpa.config import Line, Vertical
+from ledgerlens.fpa.ledger_adapter import SavedSearch, UnknownSavedSearch, ledger
 from ledgerlens.fpa.materiality import risk_label
 from ledgerlens.fpa.payments_adapter import MAX_EVENTS, EventKind, payments_feed
 from ledgerlens.fpa.source import Rows
 
 NOT_ADVICE = "Not financial advice: synthetic data, computed by LedgerLens to illustrate the analysis."
-Measure = Literal["collected_premium", "claims_paid", "lae", "opex", "net_operating_cash"]
+Measure = Literal[
+    "collected_premium", "claims_paid", "lae",  # the insurer
+    "fee_revenue", "interchange", "chargebacks",  # the processor
+    "opex", "net_operating_cash",
+]  # fmt: skip
 MONTH = r"^[0-9]{4}-(0[1-9]|1[0-2])$"  # [0-9], not \d: \d also matches other scripts' digits
 PERIOD = r"^([0-9]{4}-(0[1-9]|1[0-2])|ytd)$"
 RECENT_MONTHS = 6  # saved searches cite numbers for the latest months only
@@ -43,9 +53,17 @@ def _rows(ctx: ToolContext | Path, sql: str, params: list[Any] | None = None) ->
 
 
 def _meta(ctx: ToolContext) -> dict[str, Any]:
-    rows = _rows(ctx, "select as_of, open_period, latest_closed, aging_buckets_days from fpa.run_meta")
+    """The run metadata, or an error naming the reason when the pipeline has not run on the loaded world."""
+    try:
+        rows = _rows(
+            ctx,
+            "select variant, entity, book, income_basis, as_of, open_period, latest_closed, "
+            "aging_buckets_days from fpa.run_meta",
+        )
+    except duckdb.CatalogException as exc:  # loading a world drops it (fpa/raw.py)
+        raise RuntimeError("the FP&A pipeline has not run on the loaded world yet") from exc
     if not rows:
-        raise RuntimeError("the FP&A pipeline has not run yet")
+        raise RuntimeError("the FP&A pipeline has not run on the loaded world yet")
     return rows[0]
 
 
@@ -57,9 +75,9 @@ def _scope(ctx: ToolContext, period: str) -> dict[str, Any] | None:
     meta = _meta(ctx)
     return {
         "period": period,
-        "entity": "LedgerLens Mutual (synthetic), all lines",
+        "entity": meta["entity"],
         "currency": "USD",
-        "book": "primary (cash basis for claims and LAE)",
+        "book": meta["book"],
         "status": "preliminary" if period == meta["open_period"] else "final",
         "note": NOT_ADVICE,
     }
@@ -85,7 +103,9 @@ def _cite(ctx: ToolContext, label: str, value: float, unit: str, source: Rows, r
 
 class DriversIn(_In):
     month: str = Field(pattern=MONTH, description="YYYY-MM")
-    lob: Line | None = Field(default=None, description="Line of business; omit for every line")
+    lob: Line | Vertical | None = Field(
+        default=None, description="Line of business (insurer) or merchant vertical (processor); omit for all"
+    )
 
 
 DRIVERS_SQL = """
@@ -101,6 +121,9 @@ def drivers(params: DriversIn, ctx: ToolContext) -> ToolResult:
     if scope is None:
         return _not_found(params.month)
     rows = _rows(ctx, DRIVERS_SQL, [params.month, params.lob, params.lob])
+    if params.lob is not None and not any(r["lob"] == params.lob for r in rows):
+        reason = f"the {_meta(ctx)['variant']} world has no line or vertical {params.lob!r}"
+        return ToolResult(data={"found": False, "month": params.month, "lob": params.lob, "reason": reason})
     numbers = []
     for r in rows:
         segment = f" {r['segment']}" if r["segment"] else ""
@@ -138,9 +161,12 @@ BRIDGE_SQL = (
 
 def bridge(params: BridgeIn, ctx: ToolContext) -> ToolResult:
     scope = _scope(ctx, params.period)
-    totals = _rows(ctx, BRIDGE_TOTAL_SQL, [params.period, params.measure]) if scope else []
-    if scope is None or not totals:
+    if scope is None:
         return _not_found(params.period)
+    totals = _rows(ctx, BRIDGE_TOTAL_SQL, [params.period, params.measure])
+    if not totals:
+        reason = f"the {_meta(ctx)['variant']} world has no measure {params.measure!r}"
+        return ToolResult(data={"found": False, "measure": params.measure, "reason": reason})
     t = totals[0]
     tag = f"{params.measure} {params.period}"
     source = Rows([], BRIDGE_TOTAL_SQL, ["fpa.bridge_totals"])
@@ -220,6 +246,7 @@ SCENARIO_DRIVERS_SQL = "select row_key, driver, segment, baseline, scenario from
 
 
 def scenario(_params: _In, ctx: ToolContext) -> ToolResult:
+    _meta(ctx)  # refuses until the pipeline has run on the loaded world
     rows = _rows(ctx, SCENARIO_SQL)
     if not rows:
         raise RuntimeError("the FP&A pipeline has not run yet")
@@ -253,12 +280,27 @@ class SavePlanIn(_In):
     )
 
 
+def _has_run_meta(db_path: Path) -> bool:
+    found = _rows(
+        db_path,
+        "select count(*) as n from information_schema.tables "
+        "where table_schema = 'fpa' and table_name = 'run_meta'",
+    )
+    return bool(found[0]["n"])
+
+
 def _state_hash(state: dict[str, Any]) -> str:
     return sha256_text(json.dumps(state, sort_keys=True, default=str))
 
 
 def scenario_snapshot(db_path: Path) -> dict[str, Any]:
-    """What a human approves: the scenario's changed drivers and results, and a hash that moves with them."""
+    """What a human approves: the world, the scenario's changed drivers and results, and a hash that moves
+    with them, so an approval cannot be executed on another world's scenario."""
+    meta = _rows(db_path, "select variant from fpa.run_meta") if _has_run_meta(db_path) else []
+    if not meta:
+        raise RuntimeError(
+            "the FP&A pipeline has not run on the loaded world yet: there is no scenario to save"
+        )
     summary = [
         list(r.values())
         for r in _rows(
@@ -277,7 +319,7 @@ def scenario_snapshot(db_path: Path) -> dict[str, Any]:
         )
     ]
     name = _rows(db_path, "select any_value(scenario_name) as name from fpa.scenario_summary")[0]["name"]
-    state = {"scenario": name, "summary": summary, "drivers": drivers_}
+    state = {"variant": meta[0]["variant"], "scenario": name, "summary": summary, "drivers": drivers_}
     return state | {"scenario_hash": _state_hash(state)}
 
 
@@ -285,7 +327,7 @@ def save_plan_version(params: SavePlanIn, ctx: ToolContext) -> ToolResult:
     queue = ApprovalQueue(ctx.db_path)
     approval = queue.require_approved(params.approval_id or "", action="fpa.save_plan_version")
     approved = approval.payload.get("snapshot", {})
-    shown = {k: approved.get(k) for k in ("scenario", "summary", "drivers")}
+    shown = {k: approved.get(k) for k in ("variant", "scenario", "summary", "drivers")}
     current = scenario_snapshot(ctx.db_path)
     # The reviewer saw `shown`: it must be what the stored hash describes and what is current now.
     if not (_state_hash(shown) == approved.get("scenario_hash") == current["scenario_hash"]):
@@ -356,14 +398,21 @@ def payments_summary(params: SummaryIn, ctx: ToolContext) -> ToolResult:
     if scope is None:
         return _not_found(params.month)
     feed = payments_feed(ctx.db_path).summary(params.month)
+    # A kind and instrument normally move money one way; if both ways occur (a batch whose interchange beat
+    # its fees settles as money out), the direction joins the label so no two numbers share one.
+    ways: dict[tuple[str, str], int] = {}
+    for r in feed.rows:
+        ways[(r["kind"], r["instrument"])] = ways.get((r["kind"], r["instrument"]), 0) + 1
     numbers = []
     for r in feed.rows:
         label = f"{r['kind']} {r['instrument']} {params.month}"
+        if ways[(r["kind"], r["instrument"])] > 1:
+            label = f"{label} {r['direction']}"
         numbers += [
             _cite(ctx, f"{label} amount", r["amount"], "USD", feed, r["event_ids"]),
             _cite(ctx, f"{label} events", r["events"], "count", feed, r["event_ids"]),
         ]
-    groups = [{"kind": r["kind"], "instrument": r["instrument"]} for r in feed.rows]
+    groups = [{k: r[k] for k in ("kind", "instrument", "direction")} for r in feed.rows]
     return ToolResult(data={"found": True, "scope": scope, "groups": groups}, numbers=numbers)
 
 
@@ -387,7 +436,7 @@ def income_statement(params: PeriodIn, ctx: ToolContext) -> ToolResult:
         "found": True,
         "scope": scope,
         "lines": [line["label"] for line in statement.rows],
-        "basis": "premium revenue as billed; claims, LAE and operating expense as paid",
+        "basis": _meta(ctx)["income_basis"],
     }
     return ToolResult(data=data, numbers=numbers)
 
@@ -420,8 +469,8 @@ def ar_aging(_params: _In, ctx: ToolContext) -> ToolResult:
     numbers = []
     for r in aging.rows:
         numbers += [
-            _cite(ctx, f"receivable {r['bucket']} amount", r["amount"], "USD", aging, r["instalment_ids"]),
-            _cite(ctx, f"receivable {r['bucket']} items", r["items"], "count", aging, r["instalment_ids"]),
+            _cite(ctx, f"receivable {r['bucket']} amount", r["amount"], "USD", aging, r["item_ids"]),
+            _cite(ctx, f"receivable {r['bucket']} items", r["items"], "count", aging, r["item_ids"]),
         ]
     data = {
         "as_of": meta["as_of"],
@@ -438,7 +487,10 @@ class SavedSearchIn(_In):
 
 
 def saved_search(params: SavedSearchIn, ctx: ToolContext) -> ToolResult:
-    result = ledger(ctx.db_path).saved_search(params.name)
+    try:
+        result = ledger(ctx.db_path).saved_search(params.name)
+    except UnknownSavedSearch as exc:
+        return ToolResult(data={"found": False, "name": params.name, "reason": str(exc.args[0])})
     recent = sorted({r["month"] for r in result.rows})[-RECENT_MONTHS:]
     numbers = []
     for r in result.rows:
@@ -451,7 +503,9 @@ def saved_search(params: SavedSearchIn, ctx: ToolContext) -> ToolResult:
             if column not in result.units:
                 raise KeyError(f"saved search {params.name}: column {column!r} has no declared unit")
             numbers.append(_cite(ctx, f"{column} {key}", value, result.units[column], result, r["row_keys"]))
-    return ToolResult(data={"name": params.name, "numbers_for_months": recent}, numbers=numbers)
+    return ToolResult(
+        data={"found": True, "name": params.name, "numbers_for_months": recent}, numbers=numbers
+    )
 
 
 # --- fpa.forecast ------------------------------------------------------------------------------------------
@@ -493,6 +547,10 @@ FORECAST_MODELS_SQL = (
 
 
 def forecast(params: ForecastIn, ctx: ToolContext) -> ToolResult:
+    world = _meta(ctx)["variant"]
+    if world != "insurer":  # the stored forecasts are the insurer's (ADR 0005, decision 12)
+        reason = f"the reviewed forecast models cover the insurer's series; the {world} world has none yet"
+        return ToolResult(data={"found": False, "reason": reason})
     if not _rows(ctx, FORECAST_TABLES_SQL)[0]["n"]:
         return ToolResult(
             data={
@@ -547,7 +605,10 @@ def forecast(params: ForecastIn, ctx: ToolContext) -> ToolResult:
 FPA_TOOLS: tuple[Tool, ...] = (
     Tool(
         name="fpa.drivers",
-        description="Driver-tree values for a month (premium, collection, claims, LAE, opex), by line.",
+        description=(
+            "Driver-tree values for a month, by line or vertical. Insurer: premium, collection, claims, "
+            "LAE. Processor: merchants, volume, authorization, interchange, chargebacks, agent share."
+        ),
         input_model=DriversIn,
         fn=drivers,
     ),
@@ -565,7 +626,10 @@ FPA_TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         name="fpa.scenario",
-        description="The built-in scenario (claims moved from check to instant), baseline vs scenario.",
+        description=(
+            "The built-in scenario, baseline vs scenario: claims moved from check to instant (insurer), or "
+            "agent-initiated attempts sent with network tokens (processor)."
+        ),
         input_model=_In,
         fn=scenario,
     ),
@@ -579,7 +643,10 @@ FPA_TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         name="payments.events",
-        description="Payments feed events (premium received, claim paid, payout returned), newest first.",
+        description=(
+            "Payments feed events, newest first: premium received, claim paid, payout returned (insurer); "
+            "settlement, chargeback, chargeback recovered (processor)."
+        ),
         input_model=EventsIn,
         fn=payments_events,
     ),
@@ -603,7 +670,10 @@ FPA_TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         name="ledger.ar_aging",
-        description="Premium receivables by aging bucket (current, monitor, escalate, stale).",
+        description=(
+            "Receivables by aging bucket (current, monitor, escalate, stale): premium instalments, or "
+            "unsettled batches and chargebacks owed by merchants."
+        ),
         input_model=_In,
         fn=ar_aging,
     ),
@@ -615,7 +685,10 @@ FPA_TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         name="ledger.saved_search",
-        description="A named ledger search: premium by method, claims by channel, or cash by month.",
+        description=(
+            "A named ledger search. Insurer: premium by method, claims by channel, cash by month. Processor: "
+            "volume by card type, chargebacks by initiation, cash by month."
+        ),
         input_model=SavedSearchIn,
         fn=saved_search,
     ),

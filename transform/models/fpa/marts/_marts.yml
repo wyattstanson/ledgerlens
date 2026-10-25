@@ -2,12 +2,27 @@ version: 2
 
 models:
   - name: fpa_premium_monthly
-    description: Premium billed (by due month) and collected (by paid month) per line and payment method.
+    description: Insurer. Premium billed (by due month) and collected (by paid month) per line and payment method.
     columns:
       - name: row_key
         data_tests: [unique, not_null]
   - name: fpa_claims_monthly
-    description: Claims approved (event basis) and paid (cash basis) per line and channel, with handling cost.
+    description: Insurer. Claims approved (event basis) and paid (cash basis) per line and channel, with handling cost.
+    columns:
+      - name: row_key
+        data_tests: [unique, not_null]
+  - name: fpa_processing_monthly
+    description: Processor. Captures (event basis) and settlements (cash basis) per vertical, card type and initiation.
+    columns:
+      - name: row_key
+        data_tests: [unique, not_null]
+  - name: fpa_chargebacks_monthly
+    description: Processor. Chargebacks raised (event basis), debited and recovered (cash basis), and written off.
+    columns:
+      - name: row_key
+        data_tests: [unique, not_null]
+  - name: fpa_merchants_monthly
+    description: Processor. Merchants active at each period end, onboarded and churned, per vertical.
     columns:
       - name: row_key
         data_tests: [unique, not_null]
@@ -17,7 +32,7 @@ models:
       - name: month
         data_tests: [unique, not_null]
   - name: fpa_cash_weekly
-    description: Weekly premium collected and claims paid from the payments feed (13-week forecast input).
+    description: Insurer. Weekly premium collected and claims paid from the payments feed (13-week forecast input).
     columns:
       - name: week_start
         data_tests: [unique, not_null]
@@ -27,7 +42,13 @@ models:
       - name: row_key
         data_tests: [unique, not_null]
   - name: fpa_ar_aging
-    description: Open premium receivables at the latest period end, with days past due.
+    description: >
+      Receivables open at the latest period end: premium instalments (insurer), or settlement batches and
+      merchant chargebacks (processor).
     columns:
-      - name: instalment_id
+      - name: item_id
         data_tests: [unique, not_null]
+      - name: item_type
+        data_tests:
+          - accepted_values:
+              arguments: { values: ["premium_instalment", "settlement_batch", "merchant_chargeback"] }

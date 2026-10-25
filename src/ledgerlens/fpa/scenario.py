@@ -109,7 +109,7 @@ def check_to_instant(payouts: pl.DataFrame, as_of: date, share: float) -> Scenar
     summary = pl.DataFrame(
         [
             (
-                "claims cash out in 13 weeks",
+                f"claims cash out in {WEEKS} weeks",
                 "USD",
                 float(weekly["baseline_paid"].sum()),
                 float(weekly["scenario_paid"].sum()),

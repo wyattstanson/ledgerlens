@@ -1,4 +1,5 @@
-"""Typed view of config/fpa.yaml: the synthetic insurer, its plan misses, and analysis conventions (ADR 0001).
+"""Typed view of config/fpa.yaml: the two synthetic worlds (an insurer, and a payment processor behind
+``--variant processor``), their plan misses, and analysis conventions (ADR 0001).
 
 Every value is a synthetic assumption. The code defaults equal the shipped YAML (a test keeps them in step).
 """
@@ -9,12 +10,20 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+Variant = Literal["insurer", "processor"]
+VARIANTS: tuple[Variant, ...] = ("insurer", "processor")
 Line = Literal["personal_auto", "homeowners", "small_commercial"]
 Method = Literal["card", "ach", "check", "wallet", "agency_bill"]
 Channel = Literal["check", "ach", "debit_push", "wallet", "instant"]
 LINES: tuple[Line, ...] = ("personal_auto", "homeowners", "small_commercial")
 METHODS: tuple[Method, ...] = ("card", "ach", "check", "wallet", "agency_bill")
 CHANNELS: tuple[Channel, ...] = ("check", "ach", "debit_push", "wallet", "instant")
+Vertical = Literal["retail", "travel", "digital_goods"]  # the processor's lines of business
+CardType = Literal["debit", "credit", "premium_credit", "commercial"]
+Initiation = Literal["human", "agent"]  # agent: the purchase was started by an AI agent for the cardholder
+VERTICALS: tuple[Vertical, ...] = ("retail", "travel", "digital_goods")
+CARD_TYPES: tuple[CardType, ...] = ("debit", "credit", "premium_credit", "commercial")
+INITIATIONS: tuple[Initiation, ...] = ("human", "agent")
 
 
 SHARE_TOLERANCE = 1e-9  # mixes and shares must sum to one within this
@@ -156,6 +165,149 @@ class WorldConfig(_Strict):
         return self
 
 
+class VerticalConfig(_Strict):
+    merchant_share: float = Field(gt=0, lt=1)  # of the starting merchants and of new ones
+    attempts_per_merchant_day: float = Field(gt=0)  # mean card authorization attempts per active merchant
+    avg_ticket: float = Field(gt=0)  # mean approved transaction, USD
+    ticket_sigma: float = Field(default=0.8, gt=0)  # lognormal spread of a single ticket
+    take_rate: float = Field(gt=0, lt=1)  # blended merchant discount rate, the same on every card type
+    fixed_fee: float = Field(ge=0)  # USD per approved transaction
+    chargeback_rate: float = Field(gt=0, lt=1)  # chargebacks per human-initiated approved transaction
+    recovery_rate: float = Field(ge=0, le=1)  # share of chargebacks the merchant repays
+    seasonal_amplitude: float = Field(default=0.0, ge=0, lt=1)
+    seasonal_peak_month: int = Field(default=1, ge=1, le=12)  # calendar month with the most attempts
+    weekend_factor: float = Field(default=1.0, gt=0)  # a weekend day's attempts relative to a weekday's
+
+
+class CardTypeConfig(_Strict):
+    mix: float = Field(gt=0, lt=1)  # share of attempts
+    interchange_pct: float = Field(ge=0, lt=1)  # paid to the issuer, share of volume
+    interchange_fixed: float = Field(ge=0)  # USD per approved transaction
+
+
+def _verticals() -> dict[Vertical, VerticalConfig]:
+    return {
+        "retail": VerticalConfig(
+            merchant_share=0.55,
+            attempts_per_merchant_day=13.5,
+            avg_ticket=85,
+            take_rate=0.026,
+            fixed_fee=0.20,
+            chargeback_rate=0.0008,
+            recovery_rate=0.92,
+            seasonal_amplitude=0.25,
+            seasonal_peak_month=12,
+            weekend_factor=1.15,
+        ),
+        "travel": VerticalConfig(
+            merchant_share=0.15,
+            attempts_per_merchant_day=6,
+            avg_ticket=420,
+            ticket_sigma=0.7,
+            take_rate=0.0275,
+            fixed_fee=0.25,
+            chargeback_rate=0.0016,
+            recovery_rate=0.85,
+            seasonal_amplitude=0.20,
+            seasonal_peak_month=7,
+            weekend_factor=0.8,
+        ),
+        "digital_goods": VerticalConfig(
+            merchant_share=0.30,
+            attempts_per_merchant_day=23,
+            avg_ticket=35,
+            ticket_sigma=0.9,
+            take_rate=0.029,
+            fixed_fee=0.30,
+            chargeback_rate=0.0020,
+            recovery_rate=0.80,
+            weekend_factor=1.2,
+        ),
+    }
+
+
+def _card_types() -> dict[CardType, CardTypeConfig]:
+    return {
+        "debit": CardTypeConfig(mix=0.38, interchange_pct=0.0005, interchange_fixed=0.22),
+        "credit": CardTypeConfig(mix=0.34, interchange_pct=0.0165, interchange_fixed=0.10),
+        "premium_credit": CardTypeConfig(mix=0.20, interchange_pct=0.0210, interchange_fixed=0.10),
+        "commercial": CardTypeConfig(mix=0.08, interchange_pct=0.0230, interchange_fixed=0.10),
+    }
+
+
+class ProcessorPlantedConfig(_Strict):
+    """Where the processor's actuals deliberately leave its plan, and where each miss shows up.
+
+    - Extra digital-goods merchants: the merchants driver; the fee revenue bridge's volume column (digital
+      goods also carries the highest take rate, so some lands in mix).
+    - Debit attempts moving to premium credit: the card_mix driver and the interchange bridge's mix column;
+      not fee revenue, because the blended price does not depend on the card.
+    - A premium-credit interchange increase: the interchange_rate driver and the interchange bridge's rate
+      column.
+    - Faster growth in agent-initiated traffic: the agent_share driver and the chargeback bridge's volume
+      column (agent-initiated purchases are disputed more often).
+    - Issuers declining more agent-initiated attempts: the agent authorization_rate driver, and fewer
+      approved transactions (fee revenue volume).
+    """
+
+    volume_vertical: Vertical = "digital_goods"
+    volume_start_month: int = Field(default=15, ge=0)  # months from the window start
+    volume_new_merchant_lift: float = Field(default=1.0, ge=0)  # extra new merchants vs plan
+    card_mix_start_month: int = Field(default=12, ge=0)
+    card_mix_debit_to_premium: float = Field(default=0.20, ge=0, le=1)  # share of debit attempts that move
+    interchange_card_type: CardType = "premium_credit"
+    interchange_start_month: int = Field(default=27, ge=0)
+    interchange_pct_lift: float = Field(default=0.0015, ge=0, lt=1)
+    agent_share_actual_end: float = Field(default=0.15, ge=0, le=1)  # the plan's path ends at agent_share_end
+    agent_auth_start_month: int = Field(default=24, ge=0)
+    agent_auth_rate_drop: float = Field(default=0.08, ge=0, lt=1)
+
+
+class ProcessorWorldConfig(_Strict):
+    merchants: int = Field(default=2_400, ge=100)  # active at the window start
+    months: int = Field(default=36, ge=24)
+    end_month: str = Field(default="2026-09", pattern=r"^\d{4}-\d{2}$")
+    new_merchants_per_month: float = Field(default=50, ge=0)
+    merchant_churn_monthly: float = Field(default=0.015, ge=0, lt=1)
+    merchant_size_sigma: float = Field(default=0.8, gt=0)  # lognormal spread of a merchant's attempts
+    agent_share_start: float = Field(default=0.02, ge=0, le=1)  # share of attempts started by AI agents
+    agent_share_end: float = Field(default=0.06, ge=0, le=1)  # the share grows linearly between the two
+    human_authorization_rate: float = Field(default=0.92, gt=0, le=1)
+    agent_authorization_rate: float = Field(default=0.86, gt=0, le=1)
+    agent_chargeback_multiplier: float = Field(default=2.5, gt=0)  # agent vs human chargeback rate
+    network_fee_pct: float = Field(default=0.0014, ge=0, lt=1)  # scheme fees, settled with interchange
+    settlement_business_days: int = Field(default=1, ge=1, le=5)  # capture to settlement (T+1)
+    chargeback_lag_median_days: float = Field(default=38, gt=0)  # purchase to dispute
+    chargeback_lag_sigma: float = Field(default=0.45, gt=0)
+    recovery_lag_median_days: float = Field(default=4, gt=0)  # dispute to the merchant repaying it
+    recovery_lag_sigma: float = Field(default=0.6, gt=0)
+    write_off_days: int = Field(default=120, ge=1)  # an unrecovered chargeback is written off this late
+    opex_monthly: float = Field(default=800_000, gt=0)
+    opex_noise: float = Field(default=0.04, ge=0)
+    verticals: dict[Vertical, VerticalConfig] = Field(default_factory=_verticals)
+    card_types: dict[CardType, CardTypeConfig] = Field(default_factory=_card_types)
+    planted: ProcessorPlantedConfig = ProcessorPlantedConfig()
+
+    @model_validator(mode="after")
+    def _consistent(self) -> "ProcessorWorldConfig":
+        for name, mix, keys in (
+            ("verticals", {k: v.merchant_share for k, v in self.verticals.items()}, VERTICALS),
+            ("card_types", {k: v.mix for k, v in self.card_types.items()}, CARD_TYPES),
+        ):
+            if set(mix) != set(keys):
+                raise ValueError(f"{name} must list each of {keys}")
+            if abs(sum(mix.values()) - 1) > SHARE_TOLERANCE:
+                raise ValueError(f"{name} shares must sum to 1, got {sum(mix.values())}")
+        if self.agent_authorization_rate - self.planted.agent_auth_rate_drop <= 0:
+            raise ValueError("the planted agent authorization drop leaves no approvals")
+        return self
+
+
+class ProcessorConfig(_Strict):
+    world: ProcessorWorldConfig = ProcessorWorldConfig()
+    scenario_token_share: float = Field(default=0.30, gt=0, le=1)  # agent attempts moved to network tokens
+
+
 class MaterialityLevel(_Strict):
     pct: float = Field(gt=0, lt=1)
     usd: float = Field(gt=0)
@@ -170,7 +322,9 @@ class MaterialityConfig(_Strict):
 
 
 class FpaConfig(_Strict):
-    world: WorldConfig = WorldConfig()
+    variant: Variant = "insurer"  # the world `generate --pack fpa` writes; `--variant` overrides it
+    world: WorldConfig = WorldConfig()  # the insurer
+    processor: ProcessorConfig = ProcessorConfig()
     fiscal_year_start_month: int = Field(default=1, ge=1, le=12)
     materiality: MaterialityConfig = MaterialityConfig()
     aging_buckets_days: tuple[int, int, int] = (30, 60, 90)  # current, monitor, escalate, then stale

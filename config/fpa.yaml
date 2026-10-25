@@ -1,4 +1,7 @@
 # Payments-aware FP&A (BUILD_PROMPT section 10, ADR 0001). Every value is a synthetic assumption.
+variant: insurer # the world `generate --pack fpa` writes: insurer or processor; `--variant` overrides it
+
+# The P&C insurer (BUILD_PROMPT 10.1).
 world:
   policies: 20000 # in force at the window start
   months: 36
@@ -47,9 +50,66 @@ world:
     lae_channel: check
     lae_actual_handling_cost: 44
 
+# The payment processor (BUILD_PROMPT 10.1, `--variant processor`; ADR 0005). Sized so that both gross fee
+# revenue and net revenue (after interchange) sit inside ADR 0001's $10M to $100M band.
+processor:
+  world:
+    merchants: 2400 # active at the window start
+    months: 36
+    end_month: "2026-09"
+    new_merchants_per_month: 50
+    merchant_churn_monthly: 0.015
+    merchant_size_sigma: 0.8
+    agent_share_start: 0.02 # share of attempts started by AI agents; the plan grows it linearly to the end
+    agent_share_end: 0.06
+    human_authorization_rate: 0.92
+    agent_authorization_rate: 0.86
+    agent_chargeback_multiplier: 2.5
+    network_fee_pct: 0.0014
+    settlement_business_days: 1
+    chargeback_lag_median_days: 38
+    chargeback_lag_sigma: 0.45
+    recovery_lag_median_days: 4
+    recovery_lag_sigma: 0.6
+    write_off_days: 120
+    opex_monthly: 800000
+    opex_noise: 0.04
+    verticals:
+      retail:
+        { merchant_share: 0.55, attempts_per_merchant_day: 13.5, avg_ticket: 85, ticket_sigma: 0.8, take_rate: 0.026,
+          fixed_fee: 0.20, chargeback_rate: 0.0008, recovery_rate: 0.92, seasonal_amplitude: 0.25,
+          seasonal_peak_month: 12, weekend_factor: 1.15 }
+      travel:
+        { merchant_share: 0.15, attempts_per_merchant_day: 6, avg_ticket: 420, ticket_sigma: 0.7, take_rate: 0.0275,
+          fixed_fee: 0.25, chargeback_rate: 0.0016, recovery_rate: 0.85, seasonal_amplitude: 0.20,
+          seasonal_peak_month: 7, weekend_factor: 0.8 }
+      digital_goods:
+        { merchant_share: 0.30, attempts_per_merchant_day: 23, avg_ticket: 35, ticket_sigma: 0.9, take_rate: 0.029,
+          fixed_fee: 0.30, chargeback_rate: 0.0020, recovery_rate: 0.80, seasonal_amplitude: 0.0,
+          seasonal_peak_month: 1, weekend_factor: 1.2 }
+    card_types:
+      debit: { mix: 0.38, interchange_pct: 0.0005, interchange_fixed: 0.22 }
+      credit: { mix: 0.34, interchange_pct: 0.0165, interchange_fixed: 0.10 }
+      premium_credit: { mix: 0.20, interchange_pct: 0.0210, interchange_fixed: 0.10 }
+      commercial: { mix: 0.08, interchange_pct: 0.0230, interchange_fixed: 0.10 }
+    # Deliberate plan misses: the plan uses the base values above; actuals move as follows.
+    planted:
+      volume_vertical: digital_goods
+      volume_start_month: 15
+      volume_new_merchant_lift: 1.0
+      card_mix_start_month: 12
+      card_mix_debit_to_premium: 0.20
+      interchange_card_type: premium_credit
+      interchange_start_month: 27
+      interchange_pct_lift: 0.0015
+      agent_share_actual_end: 0.15
+      agent_auth_start_month: 24
+      agent_auth_rate_drop: 0.08
+  scenario_token_share: 0.30 # built-in scenario: move this share of agent-initiated attempts to network tokens
+
 fiscal_year_start_month: 1 # ADR 0001: set here; nothing assumes January
 
-# ADR 0001 materiality, calibrated for $10M to $100M revenue (the generator reports annual premium).
+# ADR 0001 materiality, calibrated for $10M to $100M revenue (each generator reports its annual revenue).
 materiality:
   financial_statement: { pct: 0.05, usd: 50000 }
   operating: { pct: 0.03, usd: 25000 }

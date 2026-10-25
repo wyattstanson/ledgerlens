@@ -2,8 +2,11 @@
 
 Order: ``dbt build`` for the FP&A models and tests (the ledger must reconcile before anything is computed)
 -> driver table -> one bridge per measure for every month and for fiscal year to date -> ADR 0001 flags ->
-the built-in scenario -> tables in schema ``fpa``. Forecasting will live in ``fpa/forecast.py`` once the
-ml-pipeline skill's phase reviews are approved (``ml_pipeline/PIPELINE.md``); nothing here fits a model.
+the built-in scenario -> tables in schema ``fpa``. The job runs whichever world ``raw_fpa.world_meta`` says is
+loaded, the insurer or the processor (``--variant processor``, ADR 0005): each supplies a ``WorldView`` and
+every step after it is shared, so the same tools and agents read the same tables either way. Forecasting will
+live in ``fpa/forecast.py`` once the ml-pipeline skill's phase reviews are approved
+(``ml_pipeline/PIPELINE.md``); nothing here fits a model.
 """
 
 import os
@@ -11,16 +14,21 @@ import re
 import subprocess
 import sys
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 
-from ledgerlens.core.db import connect
+from ledgerlens.core.db import NO_EXTERNAL_ACCESS, connect
 from ledgerlens.fpa.bridge import COMPONENTS, Bridge, Segment, combine, variance_bridge
-from ledgerlens.fpa.config import FpaConfig
+from ledgerlens.fpa.config import FpaConfig, Variant
 from ledgerlens.fpa.drivers import Marts, driver_table, load_marts
 from ledgerlens.fpa.materiality import Kind, Variance, flag, level_for
+from ledgerlens.fpa.processor.pipeline import processor_view
+from ledgerlens.fpa.raw import world_meta
 from ledgerlens.fpa.scenario import ScenarioResult, as_of_date, check_to_instant
+from ledgerlens.fpa.world import WorldView, segments
 from ledgerlens.settings import get_settings
 
 MEASURES: dict[str, tuple[Kind, int]] = {  # measure -> (kind, sign in net operating cash)
@@ -30,11 +38,22 @@ MEASURES: dict[str, tuple[Kind, int]] = {  # measure -> (kind, sign in net opera
     "opex": ("expense", -1),
 }
 NET = "net_operating_cash"
+ENTITY = "LedgerLens Mutual (synthetic), all lines"
+BOOK = "primary (cash basis for claims and LAE)"
+INCOME_BASIS = "premium revenue as billed; claims, LAE and operating expense as paid"
+OPEN_PERIOD_REASON: dict[Variant, str] = {
+    "insurer": "open period: late premium and pending payouts are still arriving",
+    "processor": "open period: unsettled batches and merchant recoveries are still arriving",
+}
 SECRET_ENV = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL", re.IGNORECASE)  # never passed to dbt
 MATERIALITY_BAND = (10_000_000, 100_000_000)  # ADR 0001's thresholds are calibrated for this revenue range
 
 
 class DbtBuildError(RuntimeError):
+    pass
+
+
+class WorldMismatch(RuntimeError):
     pass
 
 
@@ -69,21 +88,8 @@ def run_dbt(warehouse: Path, select: str = "path:models/fpa") -> None:
         raise DbtBuildError(f"dbt build failed for {select}:\n{output or 'a model or test failed'}")
 
 
-def _segments(
-    actual: pl.DataFrame, plan: pl.DataFrame, keys: list[str], q: tuple[str, str], a: tuple[str, str]
-):
-    """Segments joined on ``keys``; q and a name the (actual, plan) quantity and amount columns."""
-    act = actual.group_by(keys).agg(pl.col(q[0]).sum().alias("qa"), pl.col(a[0]).sum().alias("aa"))
-    pln = plan.group_by(keys).agg(pl.col(q[1]).sum().alias("qp"), pl.col(a[1]).sum().alias("ap"))
-    joined = act.join(pln, on=keys, how="full", coalesce=True).fill_null(0.0)
-    return [
-        Segment("|".join(str(r[k]) for k in keys), r["qa"], r["aa"], r["qp"], r["ap"])
-        for r in joined.sort(keys).iter_rows(named=True)
-    ]
-
-
 def bridges_for(marts: Marts, months: list[str]) -> dict[str, Bridge]:
-    """The four measure bridges and net operating cash for a set of months (one month, or year to date)."""
+    """The insurer's four measure bridges and net operating cash for some months (one, or year to date)."""
     pick = pl.col("month").is_in(months)
     prem, plan_prem = marts.premium.filter(pick), marts.plan_premium.filter(pick)
     claims, plan_claims = marts.claims.filter(pick), marts.plan_claims.filter(pick)
@@ -91,7 +97,7 @@ def bridges_for(marts: Marts, months: list[str]) -> dict[str, Bridge]:
     plan_opex = float(marts.plan_opex.filter(pick)["amount"].sum())
     out = {
         "collected_premium": variance_bridge(
-            _segments(
+            segments(
                 prem,
                 plan_prem,
                 ["lob", "method"],
@@ -102,7 +108,7 @@ def bridges_for(marts: Marts, months: list[str]) -> dict[str, Bridge]:
             float(plan_prem["collected_amount"].sum()),
         ),
         "claims_paid": variance_bridge(
-            _segments(
+            segments(
                 claims,
                 plan_claims,
                 ["lob", "channel"],
@@ -113,7 +119,7 @@ def bridges_for(marts: Marts, months: list[str]) -> dict[str, Bridge]:
             float(plan_claims["paid_amount"].sum()),
         ),
         "lae": variance_bridge(
-            _segments(
+            segments(
                 claims, plan_claims, ["lob", "channel"], ("payouts", "payouts"), ("lae_amount", "lae_amount")
             ),
             float(claims["lae_amount"].sum()),
@@ -125,6 +131,27 @@ def bridges_for(marts: Marts, months: list[str]) -> dict[str, Bridge]:
     return out
 
 
+def insurer_view(warehouse: Path, config: FpaConfig) -> WorldView:
+    marts = load_marts(warehouse)
+
+    def scenario(as_of: date) -> ScenarioResult:
+        with connect(warehouse, read_only=True, config=NO_EXTERNAL_ACCESS) as conn:
+            payouts = conn.execute("select * from fpa.stg_fpa__payouts").pl()
+        return check_to_instant(payouts, as_of, config.scenario_shift_share)
+
+    return WorldView(
+        variant="insurer",
+        entity=ENTITY,
+        book=BOOK,
+        income_basis=INCOME_BASIS,
+        measures=MEASURES,
+        drivers=driver_table(marts),
+        periods=marts.periods,
+        bridges_for=lambda months: bridges_for(marts, months),
+        scenario=scenario,
+    )
+
+
 def fiscal_ytd(months: list[str], fiscal_start: int) -> list[str]:
     """Months of the fiscal year that contains the last month in ``months``, up to it."""
     last_year, last_month = map(int, months[-1].split("-"))
@@ -133,8 +160,21 @@ def fiscal_ytd(months: list[str], fiscal_start: int) -> list[str]:
     return [m for m in months if m >= start]
 
 
+def revenue_in_band(loaded: dict[str, Any]) -> tuple[float, float | None, bool]:
+    """ADR 0001's band, checked on what the generator reports: the insurer's premium billed; the processor's
+    fee revenue both before and after interchange (processors usually report net revenue, so both must
+    fit)."""
+    revenue = float(loaded.get("annual_revenue") or 0.0)
+    net = loaded.get("annual_net_revenue")
+    net_revenue = None if net is None else float(net)
+    low, high = MATERIALITY_BAND
+    ok = low <= revenue <= high and (net_revenue is None or low <= net_revenue <= high)
+    return revenue, net_revenue, ok
+
+
 @dataclass(frozen=True)
 class FpaRun:
+    variant: Variant
     as_of: str
     open_period: str
     bridges: pl.DataFrame
@@ -142,12 +182,26 @@ class FpaRun:
     scenario: ScenarioResult
 
 
-def run_fpa(warehouse: Path, config: FpaConfig, *, build_dbt: bool = True) -> FpaRun:
+def run_fpa(
+    warehouse: Path, config: FpaConfig, *, build_dbt: bool = True, variant: Variant | None = None
+) -> FpaRun:
+    """Run the job on the world loaded in ``warehouse``; given ``variant``, refuse to run on any other."""
+    loaded = world_meta(warehouse)
+    if variant is not None and loaded["variant"] != variant:
+        raise WorldMismatch(
+            f"the warehouse holds the {loaded['variant']} world, not the {variant}: "
+            f"run `ledgerlens generate --pack fpa --variant {variant}` first"
+        )
     if build_dbt:
         run_dbt(warehouse)
-    marts = load_marts(warehouse)
-    drivers = driver_table(marts)
-    periods = marts.periods
+        rebuilt = world_meta(warehouse)
+        if rebuilt["variant"] != loaded["variant"]:  # another process loaded a world while dbt ran
+            raise WorldMismatch(
+                f"the world changed from {loaded['variant']} to {rebuilt['variant']} while dbt ran; "
+                "run the pipeline again"
+            )
+    view = (processor_view if loaded["variant"] == "processor" else insurer_view)(warehouse, config)
+    periods = view.periods
     months = periods["month"].to_list()
     closed = periods.filter(pl.col("closed"))["month"].to_list()
     open_period = periods.filter(~pl.col("closed"))["month"].to_list()[-1]
@@ -155,8 +209,8 @@ def run_fpa(warehouse: Path, config: FpaConfig, *, build_dbt: bool = True) -> Fp
 
     bridge_rows, total_rows, variances = [], [], []
     for period, window in windows.items():
-        for measure, b in bridges_for(marts, window).items():
-            kind = MEASURES[measure][0] if measure in MEASURES else "net"
+        for measure, b in view.bridges_for(window).items():
+            kind = view.measures[measure][0] if measure in view.measures else "net"
             level = level_for(measure)
             for component in COMPONENTS:
                 bridge_rows.append(
@@ -204,32 +258,35 @@ def run_fpa(warehouse: Path, config: FpaConfig, *, build_dbt: bool = True) -> Fp
             .when(pl.col("actual_cents") == 0)
             .then(pl.lit("no actual postings for this period"))
             .when(pl.col("preliminary"))
-            .then(pl.lit("open period: late premium and pending payouts are still arriving"))
+            .then(pl.lit(OPEN_PERIOD_REASON[view.variant]))
             .otherwise(pl.lit("closed period reconciled to the payments feed"))
             .alias("confidence_reason"),
         )
     )
     bridges = pl.DataFrame(bridge_rows)
 
-    with connect(warehouse, read_only=True) as conn:
-        payouts = conn.execute("select * from fpa.stg_fpa__payouts").pl()
-        meta_row = conn.execute("select annual_premium from raw_fpa.world_meta").fetchone()
     as_of = as_of_date(periods)
-    scenario = check_to_instant(payouts, as_of, config.scenario_shift_share)
-    annual_premium = float(meta_row[0]) if meta_row else 0.0
+    scenario = view.scenario(as_of)
+    revenue, net_revenue, band_ok = revenue_in_band(loaded)
     meta = pl.DataFrame(
         [
             {
                 "row_key": "meta",
+                "variant": view.variant,
+                "entity": view.entity,
+                "book": view.book,
+                "income_basis": view.income_basis,
                 "as_of": str(as_of),
                 "open_period": open_period,
                 "latest_closed": closed[-1],
-                "annual_premium": annual_premium,
-                "materiality_band_ok": MATERIALITY_BAND[0] <= annual_premium <= MATERIALITY_BAND[1],
+                "annual_revenue": revenue,
+                "annual_net_revenue": net_revenue,
+                "materiality_band_ok": band_ok,
                 # The aging edges this run used, so the aging tool reads the same ones (ADR 0001 defaults).
                 "aging_buckets_days": list(config.aging_buckets_days),
             }
-        ]
+        ],
+        schema_overrides={"annual_net_revenue": pl.Float64},
     )
 
     def named(frame: pl.DataFrame, *keys: str) -> pl.DataFrame:
@@ -244,7 +301,7 @@ def run_fpa(warehouse: Path, config: FpaConfig, *, build_dbt: bool = True) -> Fp
         "scenario_weekly": named(scenario.weekly, "week"),
     }
     tables = {
-        "drivers": drivers.with_columns(
+        "drivers": view.drivers.with_columns(
             pl.concat_str(["month", "lob", "driver", "segment"], separator="|").alias("row_key")
         ),
         "bridge": bridges,
@@ -268,5 +325,10 @@ def run_fpa(warehouse: Path, config: FpaConfig, *, build_dbt: bool = True) -> Fp
             raise
         conn.execute("commit")
     return FpaRun(
-        as_of=str(as_of), open_period=open_period, bridges=bridges, totals=totals, scenario=scenario
+        variant=view.variant,
+        as_of=str(as_of),
+        open_period=open_period,
+        bridges=bridges,
+        totals=totals,
+        scenario=scenario,
     )

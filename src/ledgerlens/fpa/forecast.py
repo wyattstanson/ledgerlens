@@ -364,6 +364,19 @@ class ForecastRun:
     models: pd.DataFrame  # per series: the reviewed choice, its reviewed and deployed form, and its scores
 
 
+FORECAST_WORLD = "insurer"  # the reviewed models cover the insurer's series only (ADR 0005, decision 12)
+
+
+def loaded_world(warehouse: Path) -> str | None:
+    """The world the pipeline last ran on (``fpa.run_meta``); None if it has not run on the loaded one."""
+    with duckdb.connect(str(warehouse), read_only=True) as con:
+        try:
+            row = con.execute("select variant from fpa.run_meta").fetchone()
+        except duckdb.CatalogException:
+            return None
+    return None if row is None else str(row[0])
+
+
 def run_forecast(
     warehouse: Path,
     choice_path: Path = MODEL_CHOICE,
@@ -372,6 +385,12 @@ def run_forecast(
 ) -> ForecastRun:
     """Refit the reviewed models in their reviewed forms on every closed period, forecast, rebuild totals and
     store everything."""
+    world = loaded_world(warehouse)
+    if world != FORECAST_WORLD:
+        raise RuntimeError(
+            f"the reviewed forecast models cover the {FORECAST_WORLD}'s series, and the pipeline last ran on "
+            f"{world or 'no world'}: load the insurer and run `pipeline fpa` first (ADR 0005, decision 12)"
+        )
     choice = load_choice(choice_path)
     picks = load_forms(choice, forms_path)
     raw = load_raw(warehouse)

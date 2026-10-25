@@ -1,12 +1,15 @@
 """LedgerLens command line.
 
-python -m ledgerlens.cli generate [--pack ratecards|interviews|fpa|all] [--seed 42]
+python -m ledgerlens.cli generate [--pack ratecards|interviews|fpa|all] [--seed 42] [--variant processor]
 python -m ledgerlens.cli pipeline ratecards [--simulate-review]
 python -m ledgerlens.cli pipeline interviews
-python -m ledgerlens.cli pipeline fpa                 # dbt build of the FP&A marts, then bridges and scenario
+python -m ledgerlens.cli pipeline fpa [--variant processor]  # dbt build of the FP&A marts, bridges, scenario
 python -m ledgerlens.cli forecast fpa                 # refit the reviewed forecast models (Linux: ADR 0005)
-python -m ledgerlens.cli golden ratecards|interviews|fpa [--seed 42]
+python -m ledgerlens.cli golden ratecards|interviews|fpa [--seed 42] [--variant processor]
 python -m ledgerlens.cli spotcheck interviews        # writes the blind 50-note labelling sheet
+
+--variant picks the FP&A world (BUILD_PROMPT 10.1, ADR 0005): the P&C insurer (default, from config/fpa.yaml)
+or the payment processor. The warehouse holds one at a time; `pipeline fpa --variant X` refuses another world.
 """
 
 import argparse
@@ -16,11 +19,10 @@ from collections.abc import Sequence
 from ledgerlens.core.approvals import ApprovalQueue
 from ledgerlens.core.db import ensure_audit_schema
 from ledgerlens.core.llm import LLMClient, ModelsConfig
-from ledgerlens.fpa import generate as fpa_generate
-from ledgerlens.fpa import golden as fpa_golden
-from ledgerlens.fpa.config import FpaConfig
+from ledgerlens.fpa.build import build_world
+from ledgerlens.fpa.build import golden_cases as fpa_golden_cases
+from ledgerlens.fpa.config import VARIANTS, FpaConfig
 from ledgerlens.fpa.pipeline import run_fpa
-from ledgerlens.fpa.plan import build_plan
 from ledgerlens.interviews import generate as iv_generate
 from ledgerlens.interviews import golden as iv_golden
 from ledgerlens.interviews.config import InterviewsConfig
@@ -41,6 +43,7 @@ from ledgerlens.ratecards.pipeline import run_ratecards
 from ledgerlens.settings import REPO_ROOT, Settings, get_settings
 
 GOLDEN_DIR = REPO_ROOT / "tests" / "evals" / "golden"
+PROCESSOR_GOLDEN_DIR = GOLDEN_DIR / "fpa_processor"  # apart: an offline run reads one world's warehouse
 SPOT_CHECK = REPO_ROOT / "data" / "spot_check_50.csv"
 
 
@@ -61,6 +64,9 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 (o
     )
     gen.add_argument("--pack", choices=["ratecards", "interviews", "fpa", "all"], default="all")
     gen.add_argument("--seed", type=int, default=None)
+    gen.add_argument(
+        "--variant", choices=VARIANTS, default=None, help="FP&A world (default: config/fpa.yaml)"
+    )
     pipe = sub.add_parser("pipeline", help="run a pack's compute steps")
     pipe.add_argument("pack", choices=["ratecards", "interviews", "fpa"])
     pipe.add_argument(
@@ -71,9 +77,15 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 (o
             "(audited as simulated)"
         ),
     )
+    pipe.add_argument(
+        "--variant", choices=VARIANTS, default=None, help="FP&A: refuse to run on another world"
+    )
     gold = sub.add_parser("golden", help="regenerate a pack's golden eval set from generator truth")
     gold.add_argument("pack", choices=["ratecards", "interviews", "fpa"])
     gold.add_argument("--seed", type=int, default=None)
+    gold.add_argument(
+        "--variant", choices=VARIANTS, default=None, help="FP&A world (default: config/fpa.yaml)"
+    )
     fcst = sub.add_parser("forecast", help="refit the reviewed forecast models and store their forecasts")
     fcst.add_argument("pack", choices=["fpa"])
     spot = sub.add_parser("spotcheck", help="write the blind tagger spot-check sheet for a human to label")
@@ -86,6 +98,9 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 (o
     fpa_config = FpaConfig.from_yaml(settings.config_dir / "fpa.yaml")
     plan = AnalysisPlan.from_yaml(settings.config_dir / "analysis_plan.yaml")
     seed = settings.seed if getattr(args, "seed", None) is None else args.seed
+    variant = getattr(args, "variant", None)
+    if variant is not None and getattr(args, "pack", None) not in ("fpa", "all"):
+        parser.error("--variant applies to the fpa pack")
     ensure_audit_schema(settings.db)
 
     if args.command == "generate":
@@ -98,11 +113,11 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 (o
             iv_generate.write_world(settings.db, settings.restricted_db, iv_world)
             print(f"interviews: {iv_world.ratings.height} ratings; person data -> {settings.restricted_db}")
         if args.pack in ("fpa", "all"):
-            fpa_world = fpa_generate.generate_world(fpa_config.world, seed)
-            fpa_generate.write_world(settings.db, fpa_world, build_plan(fpa_config.world, seed))
+            world = variant or fpa_config.variant
+            tables = build_world(settings.db, fpa_config, world, seed)
             print(
-                f"fpa: {fpa_world.payment_events.height} payment events, "
-                f"{fpa_world.transaction.height} transactions"
+                f"fpa ({world}): {tables['payment_events'].height} payment events, "
+                f"{tables['transaction'].height} transactions"
             )
     elif args.command == "pipeline" and args.pack == "ratecards":
         solution = run_ratecards(settings.db, rc_config)
@@ -115,8 +130,11 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 (o
         else:
             print(f"panel: {json.dumps(list(solution.kept))}")
     elif args.command == "pipeline" and args.pack == "fpa":
-        run = run_fpa(settings.db, fpa_config)
-        print(f"fpa: as of {run.as_of}; {run.totals.height} variance rows; scenario {run.scenario.name}")
+        run = run_fpa(settings.db, fpa_config, variant=variant)
+        print(
+            f"fpa ({run.variant}): as of {run.as_of}; {run.totals.height} variance rows; "
+            f"scenario {run.scenario.name}"
+        )
     elif args.command == "pipeline":
         registered = run_interviews(
             settings.db, settings.restricted_db, plan, _tagger(settings, iv_config), owner_labels=SPOT_CHECK
@@ -134,11 +152,15 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 (o
         if args.pack == "ratecards":
             cases = golden_cases(rc_generate.generate_world(rc_config.world, seed), rc_config)
         elif args.pack == "fpa":
-            fpa_world = fpa_generate.generate_world(fpa_config.world, seed)
-            cases = fpa_golden.golden_cases(fpa_world, build_plan(fpa_config.world, seed), fpa_config)
+            cases = fpa_golden_cases(fpa_config, variant or fpa_config.variant, seed)
         else:
             cases = iv_golden.golden_cases(iv_generate.generate_world(iv_config.world, seed), plan)
-        path = GOLDEN_DIR / f"{args.pack}.jsonl"
+        folder = (
+            PROCESSOR_GOLDEN_DIR
+            if args.pack == "fpa" and (variant or fpa_config.variant) == "processor"
+            else GOLDEN_DIR
+        )
+        path = folder / f"{args.pack}.jsonl"
         write_golden(cases, path)
         print(f"{len(cases)} golden cases -> {path}")
     else:

@@ -26,3 +26,7 @@ jobs:
       # Refit the forecast models the owner reviewed (ml_pipeline, Gate C); statsforecast runs on Linux.
       - run: uv run python -m ledgerlens.cli forecast fpa
       - run: uv run python -m ledgerlens.core.evals.run --suite offline
+      # The FP&A processor variant (ADR 0005, decision 12) replaces the insurer world, then runs its own cases.
+      - run: uv run python -m ledgerlens.cli generate --pack fpa --variant processor --seed 42
+      - run: uv run python -m ledgerlens.cli pipeline fpa --variant processor
+      - run: uv run python -m ledgerlens.core.evals.run --suite offline --golden-dir tests/evals/golden/fpa_processor

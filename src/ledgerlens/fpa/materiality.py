@@ -12,8 +12,10 @@ measure of the same month (``reclass``). Seasonality is not a reason to flag: th
 plan (ADR 0005).
 
 Net operating cash is the statement-level total and uses the financial statement thresholds; its components
-(premium collected, claims paid, LAE, opex) are operating measures. A material variance is labelled
-``CRITICAL:`` at the financial statement level and ``FLAG:`` at the operating level (ADR 0001 risks).
+are operating measures (the insurer's premium collected, claims paid, LAE and opex; the processor's fee
+revenue, interchange, chargebacks and opex). The reclassification screen pairs any two expense measures of a
+world, since a ledger reclass can move an amount between any two expense accounts. A material variance is
+labelled ``CRITICAL:`` at the financial statement level and ``FLAG:`` at the operating level (ADR 0001 risks).
 """
 
 import math

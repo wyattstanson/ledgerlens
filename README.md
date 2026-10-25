@@ -7,13 +7,14 @@ Governed analytics agents for three domains, sharing one core:
 - **Interview Quality and Fairness Observatory**: measures interviews, interviewers and loops,
   never candidates.
 - **Payments-aware FP&A**: forecasting and variance analysis for a P&C insurer, driven by how
-  premiums are collected and claims are paid.
+  premiums are collected and claims are paid; or, with `--variant processor`, for a card processor, driven by
+  merchants, authorization rates, card mix, interchange, chargebacks and agent-initiated payments.
 
 The language model plans and explains. Deterministic code produces every number, and every number
 carries lineage to the query and rows behind it. All data is synthetic.
 
-Status: Phase 4 of 6 (rate cards, interviews and FP&A built, including reviewed forecasts; web UI and polish to
-come). The full
+Status: Phase 4 of 6 (rate cards, interviews and FP&A built, the FP&A pack for an insurer and a card processor,
+with reviewed forecasts for the insurer; web UI and polish to come). The full
 specification is in [docs/BUILD_PROMPT.md](docs/BUILD_PROMPT.md); design decisions are in
 [docs/decisions](docs/decisions).
 
@@ -46,7 +47,18 @@ uv run python -m ledgerlens.core.evals.run --suite offline
 The FP&A pipeline builds the dbt marts first (the ledger must reconcile to the payments feed every month, and
 debits must equal credits), then the driver tree, volume/mix/rate/timing bridges for every month and fiscal
 year to date, ADR 0001 materiality flags and the check-to-instant scenario
-([ADR 0005](docs/decisions/0005-fpa-bridge-materiality-and-ledger-guard.md)). Forecasting goes through the
+([ADR 0005](docs/decisions/0005-fpa-bridge-materiality-and-ledger-guard.md)).
+
+The same agents run on a second world, a card processor (ADR 0005, decision 12). The warehouse holds one FP&A
+world at a time, so this replaces the insurer:
+
+```bash
+uv run python -m ledgerlens.cli generate --pack fpa --variant processor --seed 42
+uv run python -m ledgerlens.cli pipeline fpa --variant processor
+uv run python -m ledgerlens.core.evals.run --suite offline --golden-dir tests/evals/golden/fpa_processor
+```
+
+Forecasting goes through the
 ml-pipeline workbench in [ml_pipeline/](ml_pipeline/PIPELINE.md): `uv run python ml_pipeline/01_eda.py`
 redraws the exploration figures, and no model is fitted until each review gate is approved. The model notebooks
 (`03_model.py` on) need statsforecast, whose statsmodels dependency loads a compiled module that Windows App

@@ -37,7 +37,8 @@ def ledger_db(tmp_path: Path) -> Path:
             "create table fpa.stg_fpa__payment_events as select 'PE-' || i as event_id, "
             "'claim_paid' as kind, "
             "timestamp '2026-08-01' + to_hours(i) as event_ts, (timestamp '2026-08-01' + to_hours(i))::date "
-            "as event_date, 10.0 as amount, 'check' as instrument, 'auto' as lob, 'C' || i as ref_id "
+            "as event_date, 10.0 as amount, 'out' as direction, 'check' as instrument, 'auto' as lob, "
+            "'C' || i as ref_id "
             "from range(300) t(i)"
         )
     return db

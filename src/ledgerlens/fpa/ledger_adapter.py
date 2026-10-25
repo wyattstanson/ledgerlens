@@ -11,6 +11,11 @@ included. It returns at most 1,000 rows and is interrupted after ten seconds. Ev
 with external access off, so nothing here can read files or environment variables. The protocol has no write
 methods, and connecting a real NetSuite account is a decision for the owner (BUILD_PROMPT section 17), not
 something an agent can do.
+
+The same adapter serves either FP&A world (ADR 0005): the income statement shows the lines the loaded world
+posts to, aging covers every receivable account, and each world has its own saved searches, as two NetSuite
+accounts would. The world is the one the pipeline last ran on (``fpa.run_meta``), the same one every tool
+answers for. A search that world does not define raises ``UnknownSavedSearch``.
 """
 
 import json
@@ -24,9 +29,16 @@ from typing import Any, Literal, Protocol
 import duckdb
 
 from ledgerlens.core.db import NO_EXTERNAL_ACCESS, connect, fetch_dicts
+from ledgerlens.fpa.config import Variant
 from ledgerlens.fpa.source import Rows
 
-SavedSearch = Literal["premium_collected_by_method", "claims_paid_by_channel", "cash_by_month"]
+SavedSearch = Literal[
+    "premium_collected_by_method",
+    "claims_paid_by_channel",
+    "cash_by_month",
+    "volume_by_card_type",
+    "chargebacks_by_initiation",
+]
 MAX_QUERY_ROWS = 1000
 QUERY_TIMEOUT_SECONDS = 10.0
 LEDGER_TABLES = frozenset(
@@ -44,18 +56,21 @@ REFUSED_FUNCTIONS = frozenset(
 )
 REFUSED_PREFIXES = ("current_", "duckdb_", "pragma_")
 AGING_NAMES = ("current", "monitor", "escalate", "stale")
-REVENUE = 4000  # premium revenue; every other income statement line is an expense
-ACCOUNT_LINES = (  # (account, label, sign: income is credit-positive)
-    (REVENUE, "Premium revenue (billed)", -1),
+REVENUE_ACCOUNTS = frozenset({4000, 4100})  # premium and processing fees; every other line is an expense
+ACCOUNT_LINES = (  # (account, label, sign: income is credit-positive); a world shows the lines it posts to
+    (4000, "Premium revenue (billed)", -1),
+    (4100, "Processing fee revenue (captured)", -1),
     (5000, "Claims paid", 1),
     (5100, "Loss adjustment expense", 1),
+    (5200, "Interchange and network fees", 1),
+    (5300, "Chargeback losses (written off)", 1),
     (6000, "Operating expense", 1),
 )
 
 INCOME_SQL = """
 select account, fullname, amount, row_key
 from fpa.fpa_ledger_monthly
-where month = ? and account in (4000, 5000, 5100, 6000)
+where month = ? and account in (4000, 4100, 5000, 5100, 5200, 5300, 6000)
 """
 BVA_SQL = """
 select row_key, measure, actual_cents, plan_cents, variance_cents, pct_of_plan, status, favourable, kind,
@@ -65,7 +80,7 @@ where period = ?
 order by measure
 """
 AGING_SQL = """
-select instalment_id, amount, days_past_due
+select item_id, amount, days_past_due
 from fpa.fpa_ar_aging
 """
 
@@ -77,37 +92,78 @@ class SavedSearchSpec:
     units: dict[str, str]
 
 
-SAVED_SEARCHES: dict[str, SavedSearchSpec] = {
-    "premium_collected_by_method": SavedSearchSpec(
-        "fpa.fpa_premium_monthly",
-        "select month, method, sum(collected_amount) as collected_amount, "
-        "list(row_key order by row_key) as row_keys "
-        "from fpa.fpa_premium_monthly group by all order by month, method",
-        {"collected_amount": "USD"},
-    ),
-    "claims_paid_by_channel": SavedSearchSpec(
-        "fpa.fpa_claims_monthly",
-        "select month, channel, sum(coalesce(paid_amount, 0) - coalesce(returned_amount, 0)) as claims_paid, "
-        "sum(payouts) as payouts, list(row_key order by row_key) as row_keys "
-        "from fpa.fpa_claims_monthly group by all order by month, channel",
-        {"claims_paid": "USD", "payouts": "count"},
-    ),
-    # Claims net of returned payouts, as in the income statement, drivers and bridges.
-    "cash_by_month": SavedSearchSpec(
-        "fpa.fpa_cash_monthly",
-        "select month, coalesce(collected_premium, 0) as collected_premium, "
-        "coalesce(claims_paid, 0) - coalesce(payouts_returned, 0) as claims_paid, coalesce(lae, 0) as lae, "
-        "coalesce(opex, 0) as opex, net_operating_cash, [month] as row_keys "
-        "from fpa.fpa_cash_monthly order by month",
-        {
-            "collected_premium": "USD",
-            "claims_paid": "USD",
-            "lae": "USD",
-            "opex": "USD",
-            "net_operating_cash": "USD",
-        },
-    ),
+SAVED_SEARCHES: dict[Variant, dict[str, SavedSearchSpec]] = {
+    "insurer": {
+        "premium_collected_by_method": SavedSearchSpec(
+            "fpa.fpa_premium_monthly",
+            "select month, method, sum(collected_amount) as collected_amount, "
+            "list(row_key order by row_key) as row_keys "
+            "from fpa.fpa_premium_monthly group by all order by month, method",
+            {"collected_amount": "USD"},
+        ),
+        "claims_paid_by_channel": SavedSearchSpec(
+            "fpa.fpa_claims_monthly",
+            "select month, channel, "
+            "sum(coalesce(paid_amount, 0) - coalesce(returned_amount, 0)) as claims_paid, "
+            "sum(payouts) as payouts, list(row_key order by row_key) as row_keys "
+            "from fpa.fpa_claims_monthly group by all order by month, channel",
+            {"claims_paid": "USD", "payouts": "count"},
+        ),
+        # Claims net of returned payouts, as in the income statement, drivers and bridges.
+        "cash_by_month": SavedSearchSpec(
+            "fpa.fpa_cash_monthly",
+            "select month, coalesce(collected_premium, 0) as collected_premium, "
+            "coalesce(claims_paid, 0) - coalesce(payouts_returned, 0) as claims_paid, "
+            "coalesce(lae, 0) as lae, "
+            "coalesce(opex, 0) as opex, net_operating_cash, [month] as row_keys "
+            "from fpa.fpa_cash_monthly order by month",
+            {
+                "collected_premium": "USD",
+                "claims_paid": "USD",
+                "lae": "USD",
+                "opex": "USD",
+                "net_operating_cash": "USD",
+            },
+        ),
+    },
+    "processor": {
+        "volume_by_card_type": SavedSearchSpec(
+            "fpa.fpa_processing_monthly",
+            "select month, card_type, sum(payment_volume) as payment_volume, "
+            "sum(transactions) as transactions, "
+            "sum(fees_captured) as fees_captured, sum(interchange_captured) as interchange_captured, "
+            "list(row_key order by row_key) as row_keys "
+            "from fpa.fpa_processing_monthly group by all order by month, card_type",
+            {
+                "payment_volume": "USD",
+                "transactions": "count",
+                "fees_captured": "USD",
+                "interchange_captured": "USD",
+            },
+        ),
+        "chargebacks_by_initiation": SavedSearchSpec(
+            "fpa.fpa_chargebacks_monthly",
+            "select month, initiation, sum(chargebacks) as chargebacks, sum(transactions) as transactions, "
+            "sum(debited_amount - recovered_amount) as chargebacks_net, "
+            "list(row_key order by row_key) as row_keys "
+            "from fpa.fpa_chargebacks_monthly group by all order by month, initiation",
+            {"chargebacks": "count", "transactions": "count", "chargebacks_net": "USD"},
+        ),
+        # Settlements are fees net of interchange; chargebacks net of merchant recoveries, as in the bridges.
+        "cash_by_month": SavedSearchSpec(
+            "fpa.fpa_cash_monthly",
+            "select month, coalesce(settlements, 0) as settlements, "
+            "coalesce(chargebacks_debited, 0) - coalesce(chargebacks_recovered, 0) as chargebacks_net, "
+            "coalesce(opex, 0) as opex, net_operating_cash, [month] as row_keys "
+            "from fpa.fpa_cash_monthly order by month",
+            {"settlements": "USD", "chargebacks_net": "USD", "opex": "USD", "net_operating_cash": "USD"},
+        ),
+    },
 }
+
+
+class UnknownSavedSearch(KeyError):
+    pass
 
 
 class QueryRefused(ValueError):
@@ -214,7 +270,9 @@ class DuckDBLedger:
             if acct in by_account
         ]
         if lines:
-            result = sum(line["amount"] * (1 if line["account"] == REVENUE else -1) for line in lines)
+            result = sum(
+                line["amount"] * (1 if line["account"] in REVENUE_ACCOUNTS else -1) for line in lines
+            )
             keys = [key for line in lines for key in line["row_keys"]]
             lines.append(
                 {"account": None, "label": "Operating result", "amount": round(result, 2), "row_keys": keys}
@@ -225,23 +283,31 @@ class DuckDBLedger:
         return Rows(self._rows(BVA_SQL, [period]), BVA_SQL, ["fpa.bridge_totals"])
 
     def ar_aging(self, buckets: tuple[int, int, int]) -> Rows:
-        out = {
-            name: {"bucket": name, "items": 0, "amount": 0.0, "instalment_ids": []} for name in AGING_NAMES
-        }
+        out = {name: {"bucket": name, "items": 0, "amount": 0.0, "item_ids": []} for name in AGING_NAMES}
         for r in self._rows(AGING_SQL):
             bucket = out[aging_bucket(r["days_past_due"], buckets)]
             bucket["items"] += 1
             bucket["amount"] += float(r["amount"])
-            bucket["instalment_ids"].append(r["instalment_id"])
+            bucket["item_ids"].append(r["item_id"])
         for bucket in out.values():
             bucket["amount"] = round(bucket["amount"], 2)
         edges = ", ".join(f"{name} to {edge} days" for name, edge in zip(AGING_NAMES, buckets, strict=False))
         return Rows(list(out.values()), f"{AGING_SQL}-- buckets: {edges}, stale beyond", ["fpa.fpa_ar_aging"])
 
+    def _variant(self) -> Variant:
+        try:
+            rows = self._rows("select variant from fpa.run_meta")
+        except duckdb.CatalogException as exc:
+            raise RuntimeError("the FP&A pipeline has not run on the loaded world yet") from exc
+        if not rows:
+            raise RuntimeError("the FP&A pipeline has not run on the loaded world yet")
+        return rows[0]["variant"]
+
     def saved_search(self, name: SavedSearch) -> Rows:
-        if name not in SAVED_SEARCHES:
-            raise KeyError(f"unknown saved search {name!r}")
-        spec = SAVED_SEARCHES[name]
+        variant = self._variant()
+        spec = SAVED_SEARCHES[variant].get(name)
+        if spec is None:
+            raise UnknownSavedSearch(f"the {variant} world has no saved search {name!r}")
         return Rows(self._rows(spec.sql), spec.sql, [spec.source], spec.units)
 
     def query(self, sql: str) -> Rows:

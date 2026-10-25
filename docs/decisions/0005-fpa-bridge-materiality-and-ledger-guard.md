@@ -1,6 +1,6 @@
 # ADR 0005: FP&A bridge, materiality choices and the ledger guard
 
-- Status: proposed (Phase 4, for the owner's review in PR #4)
+- Status: proposed (Phase 4, for the owner's review in PR #4; decision 12 is Phase 4b, reviewed in its own PR)
 - Affects: BUILD_PROMPT section 10 (Phase 4), ADR 0001 (where this ADR departs from its wording), section 9.2
   (the answer lineage check, shared by every pack).
 
@@ -71,12 +71,51 @@ answer lineage check.
     later the hosted job), stored in the warehouse, and only read by the `fpa.forecast` tool, which loads no
     model code. A forecast history keyed by origin lets the Dagster check compare each newly closed month with
     the forecast made a month earlier.
+12. **Processor variant (Phase 4b, BUILD_PROMPT 10.1).** `generate --pack fpa --variant processor` writes a
+    second synthetic world, a card processor: merchants in three verticals, authorization attempts by card type
+    and initiation (a person, or an AI agent buying for one), fees, interchange, T+1 settlement batches, and
+    chargebacks that merchants repay or that are written off after 120 days. It reuses everything after the
+    marts: the bridge, materiality, driver table shape, tools, run tables and the four agents, unchanged.
+    - *One world at a time.* `raw_fpa.world_meta` names the loaded world; the other world's own tables are
+      written empty, so one dbt project builds either and every test runs. `pipeline fpa --variant X` refuses
+      another world. Loading a world drops `fpa.run_meta`, so every tool refuses to answer until the pipeline
+      has run on it (the staging views would otherwise show the new world under the old world's scope); the
+      pipeline also stops if another world is loaded while dbt runs, and a scenario approval records its
+      world, so it cannot be executed on the other world's scenario.
+    - *Same ledger, same tests.* Settlements post as NetSuite `deposit`s, recoveries as `custpymt`. The
+      reconciliation test now signs events by the feed's credit/debit indicator (`direction`), the receivable
+      test ties every receivable account to its open items, and two tests tie settlements to captures and
+      chargeback events to disputes.
+    - *Bases.* Fee revenue and interchange: segments vertical by card type, quantity payment volume, event basis
+      captured, cash as settled (timing is settlement across month ends). Chargebacks: segments vertical by
+      initiation, quantity disputes raised, event basis the amount merchants have not repaid, cash debited less
+      recovered. In the open month a recovery still in flight counts as not repaid until it lands, so that
+      month's chargeback split leans to rate and away from timing; closed months have had their recoveries.
+      The income statement shows fees and interchange as captured and chargeback losses as written off.
+    - *Materiality unchanged.* The world is sized so gross fee revenue (about $37M) and net revenue after
+      interchange (about $16M) both sit inside ADR 0001's band, and the run checks both. ADR 0001's aging
+      buckets apply to all receivables: unsettled batches are not yet due; merchant chargebacks age from the
+      dispute.
+    - *Plants.* More digital-goods merchants (fee revenue volume), debit traffic moving to premium credit
+      (interchange mix), a premium interchange increase (interchange rate), faster growth in agent-initiated
+      traffic, which is disputed more (chargeback volume), and issuers declining more of it (agent
+      authorization rate). The plan is the closed-form expectation of the same day-level inputs, starting from
+      the opening book exactly, so plan and actual differ only by the plants and by chance.
+    - *Scenario.* Send 30% of agent-initiated attempts with network tokens, assumed to be approved at the rate,
+      and disputed at the rate, observed for human-initiated purchases in the same vertical over the latest 13
+      weeks; a chargeback costs the vertical's observed dollars not repaid per chargeback, counted only on
+      disputes old enough for their repayment to have landed.
+    - *Golden cases* live in `tests/evals/golden/fpa_processor/`, apart from the insurer's, and CI runs the
+      offline evals once per world.
+    - *Forecasts stay with the insurer.* The reviewed models (decisions 10 and 11) cover the insurer's series:
+      `forecast fpa` refuses unless the pipeline last ran on the insurer, the Dagster forecast asset and its
+      drift check skip another world, and `fpa.forecast` answers not found there.
 
 ## Consequences
 
-- Deferred, each named in PR #4: the processor variant (BUILD_PROMPT 10.1, `--variant processor`, being
-  built separately as Phase 4b); the waterfall chart and the scenario demo in the UI (Phase 5 builds the
-  web UI).
+- Deferred, each named in PR #4: the waterfall chart and the scenario demo in the UI (Phase 5 builds the
+  web UI). For the processor (decision 12): a weekly cash mart and forecasting, which go through the same
+  ml-pipeline gates; the reviewed forecast models cover the insurer's series only.
 - Known forecast weakness: homeowners claim size keeps SeasonalNaive, which repeats last year's large losses
   into the same months a year on. A robust alternative would be a model change and needs a new review.
 - Residual risks: the answer shape is prompt-level only; lineage for bridge numbers stops at the pipeline's
