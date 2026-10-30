@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LedgerLens</title>
+  <meta name="description" content="Governed analytics for FP&amp;A, interview quality and rate cards. Every number carries lineage. Synthetic data.">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <a class="brand" href="#/fpa">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>LedgerLens</span>
+    </a>
+    <nav class="tabs" aria-label="Packs">
+      <a href="#/fpa" data-tab="fpa">FP&amp;A</a>
+      <a href="#/interviews" data-tab="interviews">Interviews</a>
+      <a href="#/ratecards" data-tab="ratecards">Rate cards</a>
+      <a href="#/approvals" data-tab="approvals">Approvals</a>
+      <a href="#/audit" data-tab="audit">Audit and cost</a>
+    </nav>
+    <span class="synthetic-tag">Synthetic data</span>
+  </header>
+
+  <main id="view" class="view" tabindex="-1">
+    <div class="skeleton-page" aria-hidden="true">
+      <span class="skeleton skeleton--title"></span>
+      <span class="skeleton skeleton--line"></span>
+      <span class="skeleton skeleton--card"></span>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <span id="footer-cost">Model spend: loading</span>
+    <span>All data is synthetic, generated from a fixed seed.</span>
+    <span id="footer-scope"></span>
+  </footer>
+
+  <!-- Lineage drawer: opens from a number, shows the SQL and rows that produced it. -->
+  <aside class="drawer" id="drawer" hidden aria-labelledby="drawer-title">
+    <div class="drawer-head">
+      <h2 id="drawer-title">Where this number came from</h2>
+      <button type="button" class="drawer-close" id="drawer-close" aria-label="Close">Close</button>
+    </div>
+    <div class="drawer-body" id="drawer-body"></div>
+  </aside>
+  <div class="scrim" id="scrim" hidden></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@4.1.2/plotly.min.js" integrity="sha384-hHv6D3tTUUBpp4tVv6t2Dc3oGuRhphmWOTKUR8jWyN0Pnon1g3iebKCNDNmKmxo8" crossorigin="anonymous"></script>
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>

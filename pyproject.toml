@@ -31,7 +31,6 @@ dependencies = [
     "scipy>=1.18",
     "statsforecast>=2.1.1",
     "statsmodels>=0.15",
-    "streamlit>=1.66",
     "uvicorn>=0.54",
 ]
 
@@ -72,7 +71,7 @@ max-args = 10
 [tool.pyright]
 typeCheckingMode = "standard"
 pythonVersion = "3.13"
-include = ["src", "app", "tests"]
+include = ["src", "tests"]
 extraPaths = ["tests"]
 venvPath = "."
 venv = ".venv"

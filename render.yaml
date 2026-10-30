@@ -1,0 +1,26 @@
+# Render blueprint (ADR 0002). One free web service; the synthetic warehouse is built at build time,
+# because a free instance's disk is ephemeral and rebuilding on every start would delay the first page.
+#
+# Approvals stay read-only here: deciding one needs a named human, and this URL cannot name anybody.
+# ANTHROPIC_API_KEY is deliberately absent, so the deployment runs fully offline and the agents are off.
+services:
+  - type: web
+    name: ledgerlens
+    runtime: python
+    plan: free
+    region: oregon
+    healthCheckPath: /healthz
+    buildCommand: |
+      pip install uv
+      uv sync --no-dev
+      uv run python -m ledgerlens.cli generate --seed 42
+      uv run python -m ledgerlens.cli pipeline ratecards --simulate-review
+      uv run python -m ledgerlens.cli pipeline interviews
+      uv run python -m ledgerlens.cli pipeline fpa
+      uv run python -m ledgerlens.cli forecast fpa
+    startCommand: uv run uvicorn ledgerlens.api.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.14"
+      - key: LEDGERLENS_ALLOW_APPROVALS
+        value: "false"

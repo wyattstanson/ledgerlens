@@ -13,8 +13,8 @@ Governed analytics agents for three domains, sharing one core:
 The language model plans and explains. Deterministic code produces every number, and every number
 carries lineage to the query and rows behind it. All data is synthetic.
 
-Status: Phase 4 of 6 (rate cards, interviews and FP&A built, the FP&A pack for an insurer and a card processor,
-with reviewed forecasts for the insurer; web UI and polish to come). The full
+Status: Phase 5 of 6 (rate cards, interviews and FP&A built, the FP&A pack for an insurer and a card
+processor, with reviewed forecasts for the insurer, and the web UI on top of them; polish to come). The full
 specification is in [docs/BUILD_PROMPT.md](docs/BUILD_PROMPT.md); design decisions are in
 [docs/decisions](docs/decisions).
 
@@ -28,8 +28,23 @@ make dbt-parse
 make check
 ```
 
-Other targets: `make dagster` (Dagster UI), `make app` (Streamlit), `make build` (materialise all assets).
+Other targets: `make api` (the web UI), `make dagster` (Dagster UI), `make build` (materialise all assets).
 On Windows without `make`, run the commands listed in the [Makefile](Makefile) directly.
+
+## The web UI
+
+```bash
+make generate && make build      # a seed-42 warehouse for the pages to read
+LEDGERLENS_ALLOW_APPROVALS=true make api
+```
+
+Then open http://127.0.0.1:8000. Five pages read the same governed tools the agents and the MCP server
+use: FP&A, interviews, rate cards, approvals, and audit and cost. Every number on a page is a button;
+clicking it shows the query, the source tables and the row ids that produced it.
+
+Approvals are decided only where `LEDGERLENS_ALLOW_APPROVALS` is true, because deciding one needs a
+named human at the keyboard. Everywhere else the queue is read-only, and
+[render.yaml](render.yaml) deploys it that way ([ADR 0002](docs/decisions/0002-ui-on-render.md)).
 
 ## Run the packs
 
