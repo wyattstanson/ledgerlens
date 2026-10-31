@@ -26,8 +26,23 @@
 - Phase 5 adds the API routes the front end needs; every number the UI shows comes from a governed tool
   with lineage, exactly as for agents and MCP.
 
-## Open for Phase 5's clarifying questions
+## Settled at Phase 5 (owner decisions, 2026-10-31)
 
-- Who may approve on a public URL? Approvals need an authenticated human. Options include a proven
-  auth library or provider, or keeping approvals local-only and showing them read-only on Render.
-- Render plan and region, and whether a monthly hosting cost is acceptable.
+1. **Approvals are local only.** Deciding one needs a named human, and a shared URL cannot name
+   anybody, so the queue is listed everywhere and decided only where `LEDGERLENS_ALLOW_APPROVALS` is
+   true. `render.yaml` sets it to false. The gate sits in the route, above the queue's own rule that a
+   decider must be a named human rather than an agent, so a deployment cannot decide even by mistake.
+2. **The free Render plan.** No hosting cost. A free instance sleeps when idle, so the first visit
+   after a pause is slow, and its disk is ephemeral: the audit log and approvals reset on each deploy.
+   The synthetic warehouse is built during the build step rather than at startup, so a cold start
+   serves a page instead of rebuilding one.
+3. **No agent panel in the UI.** Pages call governed tools directly and render what they return, so
+   the deployment makes no model calls and costs nothing to run. `ANTHROPIC_API_KEY` is absent from
+   `render.yaml`; the audit page still shows the spend table, which reads zero there.
+
+## Consequences of those three
+
+- Every number on a page comes from a tool's `numbers[]`, so each one carries a `lineage_id`, and the
+  UI turns it into a button that opens the query, the source tables and the row ids behind it.
+- The API exposes read-only tools only. A write tool is refused with 403 whatever it is sent, because
+  a write needs an approval record that only a human can create.

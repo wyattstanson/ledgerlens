@@ -1,0 +1,26 @@
+# Render blueprint (ADR 0002). One free web service.
+#
+# The warehouse is shipped prebuilt and unpacked here, not generated: building the world needs about
+# 520 MB (the rate card pipeline's peak) and a free instance has 512 MB, while serving it needs about
+# 215 MB. Rebuild it with `uv run python scripts/export_demo_warehouse.py` and commit the result.
+#
+# Approvals stay read-only: deciding one needs a named human, and this URL cannot name anybody.
+# ANTHROPIC_API_KEY is deliberately absent, so the deployment runs fully offline and the agents are off.
+services:
+  - type: web
+    name: ledgerlens
+    runtime: python
+    plan: free
+    region: oregon
+    healthCheckPath: /healthz
+    buildCommand: |
+      pip install uv
+      uv sync --no-dev
+      mkdir -p data
+      gunzip -c deploy/warehouse.duckdb.gz > data/warehouse.duckdb
+    startCommand: uv run uvicorn ledgerlens.api.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.14"
+      - key: LEDGERLENS_ALLOW_APPROVALS
+        value: "false"

@@ -1,0 +1,237 @@
+/* LedgerLens analyst UI. One theme, one accent hue, double-bezel cards (docs/ui_guardrails.md). */
+
+/* Tredence's palette: brand orange as the one accent, navy as the ink, on warm paper. The owner asked
+   for it here, which overrides ui_guardrails' neutral-dark rule; everything else in that file stands. */
+:root {
+  --orange: #fe4f00;
+  --amber: #f58220;
+  --navy: #00082c;
+  --paper: #f6f5f2;
+  --surface: #fdfdfc;
+  --ink: #00082c;
+  --ink-70: rgba(0, 8, 44, 0.72);
+  --ink-50: rgba(0, 8, 44, 0.54);
+  --line: rgba(0, 8, 44, 0.1);
+  --accent: var(--orange);
+  --accent-soft: rgba(254, 79, 0, 0.1);
+  --warn: #8a5a00;
+  --warn-soft: rgba(138, 90, 0, 0.12);
+  --shadow: 0 30px 70px -45px rgba(0, 8, 44, 0.45), 0 8px 20px -16px rgba(0, 8, 44, 0.22);
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --radius: 1.1rem;
+  --bezel: 0.3rem;
+  --font: "Poppins", ui-sans-serif, system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #00061f;
+    --surface: #050d33;
+    --ink: #f3f4f8;
+    --ink-70: rgba(243, 244, 248, 0.74);
+    --ink-50: rgba(243, 244, 248, 0.54);
+    --line: rgba(243, 244, 248, 0.14);
+    --accent: #ff6a24;
+    --accent-soft: rgba(255, 106, 36, 0.16);
+    --warn: #e0a850;
+    --warn-soft: rgba(224, 168, 80, 0.16);
+    --shadow: 0 30px 70px -45px rgba(0, 0, 0, 0.85), 0 8px 20px -16px rgba(0, 0, 0, 0.6);
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 0.95rem;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, p, figure { margin: 0; }
+ul, ol { margin: 0; padding: 0; list-style: none; }
+a { color: inherit; text-decoration: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+.grain {
+  position: fixed; inset: 0; z-index: 60; pointer-events: none; opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ---------- Top bar ---------- */
+
+.topbar {
+  position: sticky; top: 0; z-index: 30;
+  display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;
+  padding: 0.7rem clamp(1rem, 3vw, 2rem);
+  background: color-mix(in srgb, var(--paper) 82%, transparent);
+  backdrop-filter: blur(14px) saturate(130%); -webkit-backdrop-filter: blur(14px) saturate(130%);
+  border-bottom: 1px solid var(--line);
+}
+.brand { display: inline-flex; align-items: center; gap: 0.55rem; font-weight: 600; letter-spacing: -0.015em; }
+.brand-mark { width: 0.65rem; height: 0.65rem; border-radius: 2px; background: var(--accent); }
+.tabs { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+.tabs a {
+  padding: 0.35rem 0.75rem; border-radius: 999px; font-size: 0.88rem; color: var(--ink-70);
+  transition: background-color 450ms var(--ease), color 450ms var(--ease);
+}
+.tabs a:hover { background: var(--accent-soft); color: var(--ink); }
+.tabs a[aria-current="page"] { background: var(--accent); color: var(--surface); }
+.synthetic-tag {
+  margin-left: auto; padding: 0.25rem 0.7rem; border-radius: 999px;
+  font-family: var(--mono); font-size: 0.72rem; color: var(--ink-70); box-shadow: inset 0 0 0 1px var(--line);
+}
+
+/* ---------- Layout ---------- */
+
+.view { max-width: 86rem; margin: 0 auto; padding: clamp(1.5rem, 4vw, 3rem) clamp(1rem, 3vw, 2rem) 5rem; }
+.view:focus { outline: none; }
+.page-head { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 2rem; }
+.page-head h1 { font-size: clamp(1.6rem, 3vw, 2.3rem); font-weight: 600; letter-spacing: -0.03em; line-height: 1.1; }
+.page-head p { max-width: 70ch; color: var(--ink-70); }
+.scope { display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem; font-family: var(--mono); font-size: 0.74rem; color: var(--ink-50); }
+
+.section { margin-top: 2.5rem; }
+.section > h2 { font-size: 1.1rem; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 1rem; }
+.controls { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: flex-end; margin-bottom: 1.2rem; }
+.field { display: flex; flex-direction: column; gap: 0.3rem; }
+.field label { font-size: 0.78rem; color: var(--ink-50); }
+.field select, .field input {
+  padding: 0.45rem 0.7rem; border-radius: 0.6rem; border: 1px solid var(--line);
+  background: var(--surface); color: var(--ink); font: inherit; font-size: 0.9rem;
+}
+
+/* ---------- Double-bezel cards ---------- */
+
+.shell { padding: var(--bezel); border-radius: var(--radius); background: color-mix(in srgb, var(--ink) 4%, transparent); box-shadow: inset 0 0 0 1px var(--line); }
+.core {
+  height: 100%; padding: 1.2rem 1.3rem; border-radius: calc(var(--radius) - var(--bezel));
+  background: var(--surface); box-shadow: var(--shadow);
+  display: flex; flex-direction: column; gap: 0.7rem;
+}
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 0.9rem; }
+.kpi-label { font-size: 0.8rem; color: var(--ink-50); }
+.kpi-value { font-size: clamp(1.5rem, 2.6vw, 2.1rem); font-weight: 600; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+.kpi-note { font-size: 0.8rem; color: var(--ink-70); }
+
+/* A number you can trace: click it to open the drawer. */
+.traced {
+  border: 0; padding: 0; background: none; color: inherit; font: inherit; cursor: pointer;
+  border-bottom: 1px dashed var(--accent); transition: color 400ms var(--ease);
+}
+.traced:hover { color: var(--accent); }
+
+.badge { width: fit-content; padding: 0.2rem 0.6rem; border-radius: 999px; font-family: var(--mono); font-size: 0.7rem; }
+.badge--flag { background: var(--warn-soft); color: var(--warn); }
+.badge--ok { background: var(--accent-soft); color: var(--accent); }
+
+/* ---------- Tables (wide ones scroll inside their own container) ---------- */
+
+.table-wrap { overflow-x: auto; border-radius: calc(var(--radius) - var(--bezel)); }
+table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+th, td { padding: 0.55rem 0.7rem; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-size: 0.75rem; font-weight: 500; color: var(--ink-50); text-transform: uppercase; letter-spacing: 0.06em; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); }
+tbody tr:last-child td { border-bottom: 0; }
+
+/* ---------- Buttons ---------- */
+
+.btn {
+  display: inline-flex; align-items: center; gap: 0.6rem; width: fit-content;
+  padding: 0.4rem 0.4rem 0.4rem 1rem; border: 0; border-radius: 999px;
+  background: var(--accent); color: var(--surface); font: inherit; font-size: 0.88rem; font-weight: 500; cursor: pointer;
+  transition: transform 400ms var(--ease), background-color 400ms var(--ease);
+}
+.btn:active { transform: scale(0.98); }
+.btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+.btn-orb {
+  display: grid; place-items: center; width: 1.7rem; height: 1.7rem; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22); font-size: 0.8rem;
+  transition: transform 500ms var(--ease);
+}
+.btn:hover .btn-orb { transform: translate(2px, -2px); }
+.btn--quiet { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); padding: 0.4rem 0.9rem; }
+.btn--quiet:hover { background: var(--accent-soft); }
+
+/* ---------- Messages, skeletons ---------- */
+
+.note { padding: 0.8rem 1rem; border-radius: 0.8rem; font-size: 0.88rem; }
+.note--info { background: var(--accent-soft); color: var(--ink); }
+.note--error { background: var(--warn-soft); color: var(--warn); }
+.note--advice { font-size: 0.8rem; color: var(--ink-50); }
+
+.skeleton { display: block; border-radius: 0.6rem; background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.skeleton--title { width: 16rem; height: 2rem; margin-bottom: 0.8rem; }
+.skeleton--line { width: 28rem; max-width: 100%; height: 1rem; margin-bottom: 2rem; }
+.skeleton--card { width: 100%; height: 14rem; }
+.skeleton-page { padding: 1rem 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton { animation: shimmer 1.6s var(--ease) infinite; }
+  @keyframes shimmer { 50% { opacity: 0.55; } }
+}
+
+.chart { width: 100%; min-height: 20rem; }
+
+/* ---------- Lineage drawer ---------- */
+
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 50; width: min(34rem, 100vw);
+  display: flex; flex-direction: column; gap: 1rem; padding: 1.3rem;
+  background: var(--surface); box-shadow: var(--shadow); overflow-y: auto;
+}
+.drawer[hidden] { display: none; }
+.drawer-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.drawer-head h2 { font-size: 1.05rem; font-weight: 600; }
+.drawer-close { border: 0; background: none; color: var(--ink-50); font: inherit; font-size: 0.85rem; cursor: pointer; }
+.drawer-close:hover { color: var(--ink); }
+.drawer-body { display: flex; flex-direction: column; gap: 1rem; font-size: 0.88rem; }
+.drawer-body dt { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-50); }
+.drawer-body dd { margin: 0.2rem 0 0; }
+.drawer-body pre {
+  margin: 0; padding: 0.8rem; border-radius: 0.6rem; overflow-x: auto;
+  background: color-mix(in srgb, var(--ink) 5%, transparent); font-family: var(--mono); font-size: 0.78rem; line-height: 1.5;
+}
+.rowids { font-family: var(--mono); font-size: 0.76rem; color: var(--ink-70); overflow-wrap: anywhere; }
+.scrim { position: fixed; inset: 0; z-index: 45; background: rgba(22, 24, 29, 0.35); }
+.scrim[hidden] { display: none; }
+
+/* ---------- Footer ---------- */
+
+.footer {
+  display: flex; flex-wrap: wrap; gap: 0.4rem 1.5rem;
+  padding: 1.2rem clamp(1rem, 3vw, 2rem); border-top: 1px solid var(--line);
+  font-size: 0.78rem; color: var(--ink-50);
+}
+
+/* ---------- Entrances ---------- */
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Heavy fade-up with a little blur, staggered, as the concept site does it. */
+  .reveal { opacity: 0; transform: translateY(1.4rem); filter: blur(6px); }
+  .reveal.is-in {
+    opacity: 1; transform: none; filter: blur(0);
+    transition: opacity 800ms var(--ease), transform 800ms var(--ease), filter 800ms var(--ease);
+    transition-delay: var(--d, 0ms);
+  }
+  /* Cards lift under the pointer; only transform and opacity move. */
+  .cards .shell, .viz { transition: transform 600ms var(--ease); }
+  .cards .shell:hover { transform: translateY(-4px); }
+  .tabs a { transition: background-color 450ms var(--ease), color 450ms var(--ease), transform 450ms var(--ease); }
+  .tabs a:hover { transform: translateY(-1px); }
+}
+
+/* A counting number holds its width so the layout does not jitter as digits change. */
+.kpi-value { font-variant-numeric: tabular-nums; }
+
+@media (max-width: 720px) {
+  .topbar { gap: 0.7rem; }
+  .synthetic-tag { display: none; }
+  th, td { white-space: normal; }
+}
