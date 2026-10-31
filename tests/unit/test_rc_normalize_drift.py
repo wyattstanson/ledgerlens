@@ -7,7 +7,7 @@ import pytest
 
 from ledgerlens.ratecards.config import NormalizeConfig
 from ledgerlens.ratecards.drift import find_duplicates, find_leakage
-from ledgerlens.ratecards.normalize import normalize_cards, normalize_lines
+from ledgerlens.ratecards.normalize import card_rate_usd_per_hour, normalize_cards, normalize_lines
 
 CFG = NormalizeConfig(standard_hours=160, renegotiation_age_months=24)
 TITLE_MAP = pl.DataFrame(
@@ -54,6 +54,26 @@ def test_outcome_based_rate_beats_cheaper_sticker_on_total_cost():
     assert effective["C4"] is None  # fixed price stays out of hourly benchmarks
     assert effective["C5"] == pytest.approx(30.0)  # INR 2,500 x 0.012
     assert out.filter(pl.col("card_id") == "C5")["role_id"][0] is None  # pending review: unmapped
+
+
+def test_a_single_card_normalizes_the_same_way_as_the_table():
+    """The rule is written twice, as a polars expression and as a scalar; they must not drift apart.
+
+    The scalar is what /api/compute/rc.card_rate runs on a rate someone types, so a change that
+    reaches only the frame would quietly give a client a different answer from the pack page.
+    """
+    table = normalize_cards(cards(), TITLE_MAP, FX, "2026-09", CFG).sort("card_id")
+    fx = dict(FX.select("currency", "usd_per_unit").iter_rows())
+    rows = cards().sort("card_id").iter_rows(named=True)
+    for row, expected in zip(rows, table.iter_rows(named=True), strict=True):
+        sticker, effective = card_rate_usd_per_hour(
+            row["pricing_model"], row["rate"], fx[row["currency"]], row["productivity_commitment"] or 0.0, CFG
+        )
+        if expected["sticker_usd_per_hour"] is None:  # a fixed-price SOW has no rate per hour
+            assert (sticker, effective) == (None, None), row["card_id"]
+            continue
+        assert sticker == pytest.approx(expected["sticker_usd_per_hour"]), row["card_id"]
+        assert effective == pytest.approx(expected["effective_usd_per_hour"]), row["card_id"]
 
 
 def test_contracts_older_than_24_months_are_renegotiation_candidates():

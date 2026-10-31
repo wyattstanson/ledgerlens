@@ -33,6 +33,32 @@ def _effective(sticker: pl.Expr) -> pl.Expr:
     return pl.when(pl.col("pricing_model") == "outcome").then(sticker * (1 - commitment)).otherwise(sticker)
 
 
+def card_rate_usd_per_hour(
+    pricing_model: str,
+    rate: float,
+    usd_per_unit: float,
+    productivity_commitment: float,
+    config: NormalizeConfig,
+) -> tuple[float | None, float | None]:
+    """One card's sticker and effective rate per baseline hour, outside a frame.
+
+    ``normalize_cards`` does this for a whole card table as a polars expression, which cannot call a
+    Python function per row without giving up the speed that matters there. So the rule is written
+    twice and ``test_a_single_card_normalizes_the_same_way_as_the_table`` holds the two to the same
+    answer; a change to one that does not reach the other fails that test.
+
+    A fixed-price SOW has no rate per hour here, because the hours come from the invoice, not the card.
+    """
+    if pricing_model in ("tm", "outcome"):
+        sticker = rate * usd_per_unit
+    elif pricing_model == "fte":
+        sticker = rate * usd_per_unit / config.standard_hours
+    else:
+        return None, None
+    effective = sticker * (1 - productivity_commitment) if pricing_model == "outcome" else sticker
+    return sticker, effective
+
+
 def normalize_cards(
     cards: pl.DataFrame, title_map: pl.DataFrame, fx: pl.DataFrame, as_of_month: str, config: NormalizeConfig
 ) -> pl.DataFrame:

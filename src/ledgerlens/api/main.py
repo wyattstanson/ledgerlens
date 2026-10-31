@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from ledgerlens import __version__
-from ledgerlens.api import routes_audit, routes_tools
+from ledgerlens.api import routes_audit, routes_compute, routes_tools
 from ledgerlens.api.deps import settings, warehouse
 from ledgerlens.core.db import NO_EXTERNAL_ACCESS, connect, ensure_audit_schema, fetch_dicts
 from ledgerlens.settings import Settings
@@ -38,6 +38,7 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
 app = FastAPI(title="LedgerLens", version=__version__, description=DESCRIPTION, lifespan=lifespan)
 app.include_router(routes_tools.router)
 app.include_router(routes_audit.router)
+app.include_router(routes_compute.router)
 
 Config = Annotated[Settings, Depends(settings)]
 

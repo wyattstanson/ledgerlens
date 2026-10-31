@@ -199,7 +199,7 @@ def test_what_the_browser_caches_must_be_revalidated(client: TestClient, path: s
 def test_every_page_the_tabs_offer_is_a_module_that_exists(client: TestClient):
     workspace = client.get("/app").text
     tabs = re.findall(r'data-tab="([a-z]+)"', workspace)
-    assert set(tabs) == {"fpa", "interviews", "ratecards", "method", "approvals", "audit"}
+    assert set(tabs) == {"fpa", "interviews", "ratecards", "yours", "method", "approvals", "audit"}
 
     router = client.get("/static/app.js").text
     for tab in tabs:

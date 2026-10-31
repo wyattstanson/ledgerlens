@@ -22,6 +22,10 @@ const CONTEXT = {
     line: "Vendor rates normalised to one basis, and the cheapest panel that still covers every role.",
     asks: ["Where is the overbilling?", "How is the panel chosen?", "What would switching save?"],
   },
+  yours: {
+    line: "Your own figures, through the same tested functions. Nothing is stored and nothing reads the warehouse.",
+    asks: ["Why is there no lineage id?", "How is the variance bridge split?", "What makes a variance material?"],
+  },
   method: {
     line: "Every formula the platform uses, with its inputs live. Move one and the result moves.",
     asks: ["How is the variance bridge split?", "What is MASE?", "How are rates normalised?"],

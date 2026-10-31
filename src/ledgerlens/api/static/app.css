@@ -391,3 +391,32 @@ tbody tr:last-child td { border-bottom: 0; }
 @media (max-width: 720px) {
   .guide-toggle-text { display: none; }
 }
+
+/* ---------- Your numbers: forms that run the same functions as the pack pages ---------- */
+
+.yours-run { margin-top: 0.3rem; }
+.yours-out:empty { display: none; }
+.yours-answer { display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; margin-top: 0.9rem; }
+.yours-caveat { font-size: 0.76rem; line-height: 1.5; color: var(--ink-50); }
+
+/* An editable table: the cells are inputs, so they lose the padding a read-only table wants. */
+.yours-answer + .yours-out { margin-top: 0.6rem; }
+.core td input[type="text"], .core td input[type="number"] {
+  width: 100%; min-width: 6rem; padding: 0.3rem 0.45rem; border-radius: 0.4rem;
+  border: 1px solid var(--line); background: var(--paper); color: var(--ink); font: inherit; font-size: 0.84rem;
+}
+.core td input[type="number"] { font-family: var(--mono); text-align: right; }
+.yours-drop {
+  border: 0; background: none; color: var(--ink-50); font: inherit; font-size: 0.78rem; cursor: pointer;
+  transition: color 450ms var(--ease);
+}
+.yours-drop:hover { color: var(--accent); }
+
+.yours-more { margin-top: 0.4rem; }
+.yours-more summary { font-size: 0.84rem; color: var(--ink-70); cursor: pointer; }
+.yours-more summary:hover { color: var(--accent); }
+.yours-more > * + * { margin-top: 0.6rem; }
+.yours-upload { display: flex; flex-wrap: wrap; gap: 0.7rem; align-items: flex-end; }
+.yours-upload input[type="file"] { font-size: 0.82rem; color: var(--ink-70); }
+
+.field input[type="checkbox"] { width: 1rem; height: 1rem; accent-color: var(--accent); }

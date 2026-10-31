@@ -8,8 +8,9 @@ import * as fpa from "./pages/fpa.js";
 import * as interviews from "./pages/interviews.js";
 import * as method from "./pages/method.js";
 import * as ratecards from "./pages/ratecards.js";
+import * as yours from "./pages/yours.js";
 
-const PAGES = { fpa, interviews, ratecards, method, approvals, audit };
+const PAGES = { fpa, interviews, ratecards, yours, method, approvals, audit };
 const DEFAULT_PAGE = "fpa";
 
 const view = document.getElementById("view");
