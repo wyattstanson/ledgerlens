@@ -168,6 +168,11 @@ def test_meta_reports_an_empty_warehouse_without_erroring(client: TestClient):
     assert body["fpa"] is None
 
 
-def test_the_ui_is_served(client: TestClient):
-    assert "LedgerLens" in client.get("/").text
-    assert client.get("/static/app.js").status_code == 200
+def test_the_landing_page_and_the_workspace_are_each_served(client: TestClient):
+    landing = client.get("/").text
+    assert "Ask about" in landing, "the landing page leads with the guide"
+    workspace = client.get("/app").text
+    assert 'id="view"' in workspace, "the workspace is the page with the pack tabs"
+    assert landing != workspace
+    for asset in ("/static/app.js", "/static/landing.js", "/static/landing.css"):
+        assert client.get(asset).status_code == 200, asset

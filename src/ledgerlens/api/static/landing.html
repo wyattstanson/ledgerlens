@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LedgerLens</title>
+  <meta name="description" content="Governed analytics for FP&amp;A, HR and procurement. Code computes every number and links it to the rows behind it. Synthetic data.">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/light/style.css" integrity="sha384-GzhNOdwUkh38xzoNEY1vRdLr+w8q+bXEJsd/km6Ef61w1Kfk+lself6cn14ilrpO" crossorigin="anonymous">
+  <link rel="stylesheet" href="/static/landing.css">
+  <script>
+    document.documentElement.classList.add("js");
+    setTimeout(function () { if (!window.__llReady) document.documentElement.classList.remove("js"); }, 4000);
+  </script>
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+
+  <header class="nav" data-nav>
+    <a class="wordmark" href="#top"><span class="wordmark-dot" aria-hidden="true"></span>LedgerLens</a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="#packs">What it does</a>
+      <a href="#governed">How it stays honest</a>
+      <a href="#proof">Proof</a>
+    </nav>
+    <a class="btn btn--primary btn--sm" href="/app#/fpa">
+      <span>Open the workspace</span>
+      <span class="orb" aria-hidden="true"><i class="ph-light ph-arrow-up-right"></i></span>
+    </a>
+  </header>
+
+  <main id="top">
+    <!-- Hero: the first move is a question, not a button (after Think Company's "Ask us anything"). -->
+    <section class="hero">
+      <div class="hero-inner">
+        <p class="eyebrow" data-fade>FP&amp;A · HR · Procurement</p>
+        <h1 class="display" data-lines>
+          <span>You already have</span>
+          <span>the numbers.</span>
+          <span class="accent">Now prove them.</span>
+        </h1>
+        <p class="lede" data-fade>
+          Analytics agents for the CFO, CHRO and CPO offices. Tested code computes every figure and
+          links it to the rows behind it, and nothing changes without a named approver.
+        </p>
+
+        <form class="ask" data-ask autocomplete="off">
+          <label class="sr-only" for="ask-input">Ask about the platform</label>
+          <i class="ph-light ph-magnifying-glass ask-icon" aria-hidden="true"></i>
+          <input id="ask-input" type="text" placeholder="Ask about your month end, your hiring loop, your vendors..." data-ask-input>
+          <button class="btn btn--primary btn--sm" type="submit">
+            <span>Ask</span>
+            <span class="orb" aria-hidden="true"><i class="ph-light ph-arrow-right"></i></span>
+          </button>
+        </form>
+        <ul class="suggestions" data-suggestions>
+          <li><button type="button" data-q="why is net cash under plan">Why is net cash under plan?</button></li>
+          <li><button type="button" data-q="which interviewers drift">Which interviewers drift from their peers?</button></li>
+          <li><button type="button" data-q="which vendors bill above contract">Which vendors bill above contract?</button></li>
+          <li><button type="button" data-q="how do i know a number is right">How do I know a number is right?</button></li>
+        </ul>
+        <div class="answer" data-answer hidden></div>
+      </div>
+      <div class="hero-glow" aria-hidden="true"></div>
+    </section>
+
+    <!-- Each office states its problem in its own words, then one line back. -->
+    <section class="help" id="packs">
+      <h2 class="section-title" data-lines><span>You are navigating</span><span>something expensive.</span></h2>
+      <ol class="help-list">
+        <li class="help-row" data-row>
+          <blockquote>"Close is done and I still cannot say why cash missed plan."</blockquote>
+          <p>Variance split into volume, mix, rate and timing, summing to the cent, each part traced to its rows.</p>
+          <a class="text-link" href="/app#/fpa">FP&amp;A <i class="ph-light ph-arrow-right" aria-hidden="true"></i></a>
+        </li>
+        <li class="help-row" data-row>
+          <blockquote>"Legal wants a bias audit and I have a spreadsheet of ratings."</blockquote>
+          <p>Interviewers, panels and stages measured, never candidates, with the audit tables the law asks for.</p>
+          <a class="text-link" href="/app#/interviews">HR <i class="ph-light ph-arrow-right" aria-hidden="true"></i></a>
+        </li>
+        <li class="help-row" data-row>
+          <blockquote>"Forty vendors, six hundred job titles, and no idea what a role really costs."</blockquote>
+          <p>Titles mapped to standard roles, vendors compared on total cost, savings traced to invoice lines.</p>
+          <a class="text-link" href="/app#/ratecards">Procurement <i class="ph-light ph-arrow-right" aria-hidden="true"></i></a>
+        </li>
+      </ol>
+    </section>
+
+    <!-- The governance story, as cards that stack over one another on scroll. -->
+    <section class="stack" id="governed" data-stack>
+      <div class="stack-head">
+        <h2 class="section-title"><span>Every number</span><span class="accent">earns its place.</span></h2>
+      </div>
+      <div class="stack-cards">
+        <article class="stack-card" data-card><div class="card-core">
+          <span class="card-n">01</span>
+          <h3>Code computes, the model explains</h3>
+          <p>The language model plans and narrates. Every figure comes from a tested function, never from the model's own head.</p>
+        </div></article>
+        <article class="stack-card" data-card><div class="card-core">
+          <span class="card-n">02</span>
+          <h3>Each figure carries its lineage</h3>
+          <p>A number arrives with an id that resolves to the query, the source tables and the row ids that produced it. Click one and see them.</p>
+        </div></article>
+        <article class="stack-card" data-card><div class="card-core">
+          <span class="card-n">03</span>
+          <h3>Agents propose, people approve</h3>
+          <p>Nothing that writes runs without an approval record a named person created. Agents can only ask.</p>
+        </div></article>
+        <article class="stack-card" data-card><div class="card-core">
+          <span class="card-n">04</span>
+          <h3>Nobody gets scored</h3>
+          <p>No candidate-level score or ranking exists anywhere, and any group under five people is suppressed before it reaches a page.</p>
+        </div></article>
+      </div>
+    </section>
+
+    <!-- Proof: planted problems, found. -->
+    <section class="proof" id="proof">
+      <h2 class="section-title" data-lines><span>Planted problems,</span><span>found.</span></h2>
+      <p class="lede" data-fade>Each pack runs on seeded data with known faults hidden in it. The test is whether the agents find those and nothing else.</p>
+      <div class="proof-grid">
+        <article class="proof-card" data-row>
+          <p class="proof-figure"><span data-count="8">8</span> of 12</p>
+          <p>Forecast series where the reviewed model beats seasonal naive on six frozen months, touched once.</p>
+          <span class="tag">FP&amp;A</span>
+        </article>
+        <article class="proof-card" data-row>
+          <p class="proof-figure"><span data-count="4">4</span> of 4</p>
+          <p>The lenient interviewer, the random panel, the adverse-impact stage and the non-predictive role.</p>
+          <span class="tag">HR</span>
+        </article>
+        <article class="proof-card" data-row>
+          <p class="proof-figure"><span data-count="2055">2,055</span></p>
+          <p>Overbilled and duplicate invoice lines found and traced to their line IDs.</p>
+          <span class="tag">Procurement</span>
+        </article>
+        <article class="proof-card" data-row>
+          <p class="proof-figure">$<span data-count="0">0.00</span></p>
+          <p>Residual on the August cash bridge: volume, mix, rate and timing explain all of it.</p>
+          <span class="tag">FP&amp;A</span>
+        </article>
+      </div>
+    </section>
+
+    <section class="closing">
+      <h2 class="display display--closing" data-lines>
+        <span>You have a hard</span>
+        <span class="accent">number problem.</span>
+      </h2>
+      <p class="lede">Open the workspace and click any figure to see where it came from.</p>
+      <a class="btn btn--primary btn--lg" href="/app#/fpa">
+        <span>Open the workspace</span>
+        <span class="orb" aria-hidden="true"><i class="ph-light ph-arrow-up-right"></i></span>
+      </a>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>All data is synthetic, generated from a fixed seed. Not financial or legal advice.</p>
+    <p class="footer-base">LedgerLens, a governed analytics demo.</p>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js" integrity="sha384-XmJ9SoHtVOHoQUcKvFAzVXwdkKo1Ie3bhmSoIAkcdsHGaIrVJIkmozyq0FJeb/Ly" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/ScrollTrigger.min.js" integrity="sha384-wl5TeDVvOWt30Pbf8aSo2ZrzsOjddu3avOBvHe+p+OhJt9gP6w9YXmDkN5DK2/dF" crossorigin="anonymous"></script>
+  <script type="module" src="/static/landing.js"></script>
+</body>
+</html>

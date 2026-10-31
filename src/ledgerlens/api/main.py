@@ -90,7 +90,13 @@ def _fpa_meta(db_path: Path) -> dict[str, Any] | None:
 
 
 @app.get("/", include_in_schema=False)
-def index() -> FileResponse:
+def landing() -> FileResponse:
+    """The public page. The workspace lives at /app so the two can look nothing alike."""
+    return FileResponse(STATIC_DIR / "landing.html")
+
+
+@app.get("/app", include_in_schema=False)
+def workspace() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
 
 
