@@ -22,7 +22,7 @@
   --radius: 1.1rem;
   --bezel: 0.3rem;
   --font: "Poppins", ui-sans-serif, system-ui, sans-serif;
-  --mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
 @media (prefers-color-scheme: dark) {

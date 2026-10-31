@@ -161,6 +161,25 @@ document.querySelectorAll("[data-suggestions] button").forEach((button) => {
   });
 });
 
+/* ---------- Mobile menu ---------- */
+
+const burger = document.querySelector("[data-burger]");
+const menu = document.querySelector("[data-menu]");
+const setMenu = (open) => {
+  burger.setAttribute("aria-expanded", String(open));
+  burger.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+  menu.classList.toggle("is-open", open);
+  menu.setAttribute("aria-hidden", String(!open));
+  document.body.style.overflow = open ? "hidden" : "";
+};
+burger.addEventListener("click", () => setMenu(burger.getAttribute("aria-expanded") !== "true"));
+menu.querySelectorAll("a").forEach((link) => link.addEventListener("click", () => setMenu(false)));
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && menu.classList.contains("is-open")) setMenu(false);
+});
+
+document.querySelector("[data-year]").textContent = String(new Date().getFullYear());
+
 /* ---------- Motion ---------- */
 
 if (hasGsap) {

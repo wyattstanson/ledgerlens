@@ -8,7 +8,7 @@
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/light/style.css" integrity="sha384-GzhNOdwUkh38xzoNEY1vRdLr+w8q+bXEJsd/km6Ef61w1Kfk+lself6cn14ilrpO" crossorigin="anonymous">
   <link rel="stylesheet" href="/static/landing.css">
   <script>
@@ -26,11 +26,23 @@
       <a href="#governed">How it stays honest</a>
       <a href="#proof">Proof</a>
     </nav>
-    <a class="btn btn--primary btn--sm" href="/app#/fpa">
+    <a class="btn btn--primary btn--sm nav-cta" href="/app#/fpa">
       <span>Open the workspace</span>
       <span class="orb" aria-hidden="true"><i class="ph-light ph-arrow-up-right"></i></span>
     </a>
+    <button class="burger" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="menu" data-burger>
+      <span></span><span></span>
+    </button>
   </header>
+
+  <div class="menu" id="menu" aria-hidden="true" data-menu>
+    <nav class="menu-links" aria-label="Menu">
+      <a href="#packs" style="--d:0">What it does</a>
+      <a href="#governed" style="--d:1">How it stays honest</a>
+      <a href="#proof" style="--d:2">Proof</a>
+      <a href="/app#/fpa" style="--d:3">Open the workspace</a>
+    </nav>
+  </div>
 
   <main id="top">
     <!-- Hero: the first move is a question, not a button (after Think Company's "Ask us anything"). -->
@@ -64,7 +76,6 @@
         </ul>
         <div class="answer" data-answer hidden></div>
       </div>
-      <div class="hero-glow" aria-hidden="true"></div>
     </section>
 
     <!-- Each office states its problem in its own words, then one line back. -->
@@ -161,7 +172,15 @@
 
   <footer class="footer">
     <p>All data is synthetic, generated from a fixed seed. Not financial or legal advice.</p>
-    <p class="footer-base">LedgerLens, a governed analytics demo.</p>
+    <nav class="footer-links" aria-label="Footer">
+      <a href="/app#/fpa">FP&amp;A</a>
+      <a href="/app#/interviews">HR</a>
+      <a href="/app#/ratecards">Procurement</a>
+      <a href="/app#/audit">Audit and cost</a>
+      <a href="/terms">Terms</a>
+      <a href="/privacy">Privacy</a>
+    </nav>
+    <p class="footer-base">LedgerLens, a governed analytics demo. <span data-year>2026</span>.</p>
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js" integrity="sha384-XmJ9SoHtVOHoQUcKvFAzVXwdkKo1Ie3bhmSoIAkcdsHGaIrVJIkmozyq0FJeb/Ly" crossorigin="anonymous"></script>

@@ -176,3 +176,20 @@ def test_the_landing_page_and_the_workspace_are_each_served(client: TestClient):
     assert landing != workspace
     for asset in ("/static/app.js", "/static/landing.js", "/static/landing.css"):
         assert client.get(asset).status_code == 200, asset
+
+
+def test_a_missing_page_gets_the_styled_404_and_a_missing_api_path_gets_json(client: TestClient):
+    page = client.get("/nope")
+    assert page.status_code == 404
+    assert "That page" in page.text, "a visitor should land somewhere that offers a way on"
+
+    api = client.get("/api/nope")
+    assert api.status_code == 404
+    assert api.json()["detail"] == "not found", "a caller needs JSON, not a page"
+
+
+@pytest.mark.parametrize("path", ["/terms", "/privacy"])
+def test_the_legal_pages_are_served(client: TestClient, path: str):
+    response = client.get(path)
+    assert response.status_code == 200
+    assert "synthetic" in response.text or "collects nothing" in response.text

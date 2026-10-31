@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import Annotated, Any
 
 import duckdb
-from fastapi import Depends, FastAPI
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI, Request, Response
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from ledgerlens import __version__
@@ -98,6 +98,24 @@ def landing() -> FileResponse:
 @app.get("/app", include_in_schema=False)
 def workspace() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/terms", include_in_schema=False)
+def terms() -> FileResponse:
+    return FileResponse(STATIC_DIR / "terms.html")
+
+
+@app.get("/privacy", include_in_schema=False)
+def privacy() -> FileResponse:
+    return FileResponse(STATIC_DIR / "privacy.html")
+
+
+@app.exception_handler(404)
+async def not_found(request: Request, _: Exception) -> Response:
+    """A page gets the styled 404; an API path keeps its JSON so callers can read it."""
+    if request.url.path.startswith("/api/"):
+        return JSONResponse({"detail": "not found"}, status_code=404)
+    return FileResponse(STATIC_DIR / "404.html", status_code=404)
 
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
