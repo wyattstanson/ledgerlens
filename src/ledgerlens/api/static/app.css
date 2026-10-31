@@ -64,25 +64,62 @@ a { color: inherit; text-decoration: none; }
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-/* ---------- Top bar ---------- */
+/* ---------- The desk: a left rail, a status strip, and the work ---------- */
 
-.topbar {
-  position: sticky; top: 0; z-index: 30;
-  display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;
-  padding: 0.7rem clamp(1rem, 3vw, 2rem);
-  background: color-mix(in srgb, var(--paper) 82%, transparent);
-  backdrop-filter: blur(14px) saturate(130%); -webkit-backdrop-filter: blur(14px) saturate(130%);
-  border-bottom: 1px solid var(--line);
+.app {
+  display: grid;
+  grid-template-columns: 15.5rem minmax(0, 1fr);
+  min-height: 100dvh;
 }
-.brand { display: inline-flex; align-items: center; gap: 0.55rem; font-weight: 600; letter-spacing: -0.015em; }
+
+.rail {
+  position: sticky; top: 0; align-self: start; z-index: 30;
+  display: flex; flex-direction: column; gap: 0.35rem;
+  height: 100dvh; padding: 1.1rem 0.9rem 1.1rem 1.1rem; overflow-y: auto;
+  border-right: 1px solid var(--line);
+  background: color-mix(in srgb, var(--ink) 3%, var(--paper));
+}
+.brand { display: inline-flex; align-items: center; gap: 0.55rem; margin-bottom: 1.4rem; font-weight: 600; letter-spacing: -0.015em; }
 .brand-mark { width: 0.65rem; height: 0.65rem; border-radius: 2px; background: var(--accent); }
-.tabs { display: flex; gap: 0.3rem; flex-wrap: wrap; }
-.tabs a {
-  padding: 0.35rem 0.75rem; border-radius: 999px; font-size: 0.88rem; color: var(--ink-70);
+
+.rail-group { margin: 1rem 0 0.4rem 0.55rem; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-50); }
+.rail-nav { display: flex; flex-direction: column; gap: 0.15rem; }
+.rail-nav a {
+  display: flex; align-items: center; gap: 0.7rem;
+  padding: 0.42rem 0.6rem; border-radius: 0.6rem; font-size: 0.9rem; color: var(--ink-70);
   transition: background-color 450ms var(--ease), color 450ms var(--ease);
 }
-.tabs a:hover { background: var(--accent-soft); color: var(--ink); }
-.tabs a[aria-current="page"] { background: var(--accent); color: var(--surface); }
+/* The letter badge is the row's anchor, so the eye finds a page by shape before it reads the word. */
+.rail-key {
+  display: grid; place-items: center; width: 1.35rem; height: 1.35rem; flex: none;
+  border-radius: 0.4rem; box-shadow: inset 0 0 0 1px var(--line);
+  font-family: var(--mono); font-size: 0.7rem; color: var(--ink-50);
+  transition: background-color 450ms var(--ease), color 450ms var(--ease), box-shadow 450ms var(--ease);
+}
+.rail-nav a:hover { background: var(--accent-soft); color: var(--ink); }
+.rail-nav a[aria-current="page"] { background: var(--accent); color: var(--surface); }
+.rail-nav a[aria-current="page"] .rail-key { background: rgba(255, 255, 255, 0.22); box-shadow: none; color: var(--surface); }
+
+.rail-foot {
+  display: flex; flex-direction: column; gap: 0.35rem;
+  margin-top: auto; padding-top: 1.2rem; border-top: 1px solid var(--line);
+  font-size: 0.74rem; line-height: 1.45; color: var(--ink-50);
+}
+
+.workspace { display: flex; flex-direction: column; min-width: 0; }
+
+.workbar {
+  position: sticky; top: 0; z-index: 25;
+  display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  padding: 0.75rem clamp(1rem, 3vw, 2.2rem);
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--paper) 82%, transparent);
+  backdrop-filter: blur(14px) saturate(130%); -webkit-backdrop-filter: blur(14px) saturate(130%);
+}
+.crumb { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--ink-50); }
+.crumb span::after { content: "/"; margin-left: 0.5rem; color: var(--line); }
+.crumb b { font-weight: 600; color: var(--ink); }
+.scope-strip { font-family: var(--mono); font-size: 0.74rem; color: var(--ink-50); }
 .synthetic-tag {
   margin-left: auto; padding: 0.25rem 0.7rem; border-radius: 999px;
   font-family: var(--mono); font-size: 0.72rem; color: var(--ink-70); box-shadow: inset 0 0 0 1px var(--line);
@@ -90,7 +127,7 @@ a { color: inherit; text-decoration: none; }
 
 /* ---------- Layout ---------- */
 
-.view { max-width: 86rem; margin: 0 auto; padding: clamp(1.5rem, 4vw, 3rem) clamp(1rem, 3vw, 2rem) 5rem; }
+.view { width: 100%; max-width: 82rem; padding: clamp(1.4rem, 3vw, 2.4rem) clamp(1rem, 3vw, 2.2rem) 5rem; }
 .view:focus { outline: none; }
 .page-head { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 2rem; }
 .page-head h1 { font-size: clamp(1.6rem, 3vw, 2.3rem); font-weight: 600; letter-spacing: -0.03em; line-height: 1.1; }
@@ -111,14 +148,15 @@ a { color: inherit; text-decoration: none; }
 
 .shell { padding: var(--bezel); border-radius: var(--radius); background: color-mix(in srgb, var(--ink) 4%, transparent); box-shadow: inset 0 0 0 1px var(--line); }
 .core {
-  height: 100%; padding: 1.2rem 1.3rem; border-radius: calc(var(--radius) - var(--bezel));
+  height: 100%; padding: 1rem 1.15rem; border-radius: calc(var(--radius) - var(--bezel));
   background: var(--surface); box-shadow: var(--shadow);
   display: flex; flex-direction: column; gap: 0.7rem;
 }
 
-.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 0.9rem; }
-.kpi-label { font-size: 0.8rem; color: var(--ink-50); }
-.kpi-value { font-size: clamp(1.5rem, 2.6vw, 2.1rem); font-weight: 600; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+/* Tighter than a marketing stat row: a metric strip is for reading six figures at once, not one. */
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(12.5rem, 1fr)); gap: 0.75rem; }
+.kpi-label { font-size: 0.78rem; color: var(--ink-50); }
+.kpi-value { font-size: clamp(1.35rem, 2vw, 1.8rem); font-weight: 600; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
 .kpi-note { font-size: 0.8rem; color: var(--ink-70); }
 
 /* A number you can trace: click it to open the drawer. */
@@ -223,15 +261,133 @@ tbody tr:last-child td { border-bottom: 0; }
   /* Cards lift under the pointer; only transform and opacity move. */
   .cards .shell, .viz { transition: transform 600ms var(--ease); }
   .cards .shell:hover { transform: translateY(-4px); }
-  .tabs a { transition: background-color 450ms var(--ease), color 450ms var(--ease), transform 450ms var(--ease); }
-  .tabs a:hover { transform: translateY(-1px); }
+  .rail-nav a { transition: background-color 450ms var(--ease), color 450ms var(--ease), transform 450ms var(--ease); }
+  .rail-nav a:hover { transform: translateX(2px); }
 }
 
 /* A counting number holds its width so the layout does not jitter as digits change. */
 .kpi-value { font-variant-numeric: tabular-nums; }
 
+/* ---------- Method page: the equation, its inputs, and what they produce ---------- */
+
+.formula-name { font-size: 1.1rem; font-weight: 600; letter-spacing: -0.01em; }
+.formula {
+  display: block; padding: 0.9rem 1rem; border-radius: 0.7rem; overflow-x: auto;
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+  font-family: var(--mono); font-size: 0.82rem; line-height: 1.7; color: var(--ink);
+}
+.formula-body { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 1.5rem; margin-top: 0.4rem; }
+.formula-inputs { display: flex; flex-direction: column; gap: 0.8rem; }
+.field--slider { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.2rem 0.8rem; align-items: center; }
+.field--slider label { grid-column: 1; font-size: 0.82rem; color: var(--ink-70); }
+.field--slider .field-value { grid-column: 2; grid-row: 1; font-family: var(--mono); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+.field--slider input[type="range"] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+
+.formula-out {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.5rem 1rem; align-content: start;
+  margin: 0; padding: 1rem 1.1rem; border-radius: 0.8rem;
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.formula-out dt { font-size: 0.85rem; color: var(--ink-70); }
+.formula-out dd { margin: 0; text-align: right; font-family: var(--mono); font-size: 0.88rem; font-variant-numeric: tabular-nums; }
+.formula-out .is-strong { font-weight: 600; color: var(--ink); }
+.formula-out dt.is-strong + dd.is-strong { font-size: 1rem; }
+
+@media (max-width: 760px) {
+  .formula-body { grid-template-columns: 1fr; }
+}
+
+/* Narrow: the rail lies down as a dock across the top of the work, still the only navigation. */
+@media (max-width: 880px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .rail {
+    position: static; height: auto; padding: 0.9rem clamp(1rem, 3vw, 2.2rem);
+    border-right: 0; border-bottom: 1px solid var(--line);
+  }
+  .brand { margin-bottom: 0.9rem; }
+  .rail-group { display: none; }
+  .rail-nav { flex-direction: row; flex-wrap: wrap; gap: 0.3rem; }
+  .rail-foot { margin-top: 0.9rem; }
+}
+
 @media (max-width: 720px) {
-  .topbar { gap: 0.7rem; }
   .synthetic-tag { display: none; }
+  .rail-key { display: none; }
   th, td { white-space: normal; }
+}
+
+/* ---------- The docked guide ---------- */
+
+.guide { position: fixed; right: clamp(1rem, 2vw, 1.6rem); bottom: clamp(1rem, 2vw, 1.6rem); z-index: 40; display: flex; flex-direction: column; align-items: flex-end; gap: 0.7rem; }
+
+.guide-toggle {
+  display: inline-flex; align-items: center; gap: 0.6rem;
+  padding: 0.45rem 1rem 0.45rem 0.5rem; border: 0; border-radius: 999px;
+  background: var(--surface); color: var(--ink); font: inherit; font-size: 0.86rem; cursor: pointer;
+  box-shadow: var(--shadow), inset 0 0 0 1px var(--line);
+  transition: transform 500ms var(--ease);
+}
+.guide-toggle:active { transform: scale(0.98); }
+.guide-toggle-text { font-weight: 500; }
+
+/* The unit is drawn rather than loaded: a visor with two eyes, so it can look awake without art. */
+.guide-unit {
+  display: grid; place-items: center; width: 1.9rem; height: 1.9rem; flex: none;
+  border-radius: 0.6rem; background: var(--accent);
+}
+.guide-visor {
+  display: flex; align-items: center; justify-content: center; gap: 0.2rem;
+  width: 1.15rem; height: 0.72rem; border-radius: 0.28rem; background: rgba(0, 8, 44, 0.78);
+}
+.guide-eye { width: 0.2rem; height: 0.2rem; border-radius: 50%; background: var(--surface); }
+
+.guide-panel {
+  display: flex; flex-direction: column; gap: 0.8rem;
+  width: min(23rem, calc(100vw - 2rem)); padding: 1.1rem;
+  border-radius: var(--radius); background: var(--surface);
+  box-shadow: var(--shadow), inset 0 0 0 1px var(--line);
+}
+.guide-panel[hidden] { display: none; }
+.guide-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.guide-head h2 { font-size: 1rem; font-weight: 600; }
+.guide-line { font-size: 0.85rem; color: var(--ink-70); }
+
+.guide-asks { display: flex; flex-direction: column; gap: 0.35rem; }
+.guide-ask {
+  padding: 0.4rem 0.7rem; border: 0; border-radius: 0.6rem; text-align: left;
+  background: color-mix(in srgb, var(--ink) 4%, transparent); color: var(--ink-70);
+  font: inherit; font-size: 0.82rem; cursor: pointer;
+  transition: background-color 450ms var(--ease), color 450ms var(--ease);
+}
+.guide-ask:hover { background: var(--accent-soft); color: var(--ink); }
+
+.guide-answer {
+  display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start;
+  padding: 0.9rem 1rem; border-radius: 0.8rem;
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.guide-answer[hidden] { display: none; }
+.guide-answer h3 { font-size: 0.92rem; font-weight: 600; }
+.guide-answer p { font-size: 0.84rem; color: var(--ink-70); }
+.guide-figure { font-family: var(--mono); font-size: 0.78rem; color: var(--ink); }
+
+.guide-form { display: flex; gap: 0.5rem; }
+.guide-form input {
+  flex: 1; min-width: 0; padding: 0.45rem 0.7rem; border-radius: 0.6rem; border: 1px solid var(--line);
+  background: var(--paper); color: var(--ink); font: inherit; font-size: 0.86rem;
+}
+.guide-form .btn { padding: 0.4rem 1rem; }
+.guide-foot { font-size: 0.72rem; color: var(--ink-50); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .guide-panel { animation: guide-in 600ms var(--ease) both; }
+  @keyframes guide-in { from { opacity: 0; transform: translateY(0.8rem); } }
+  /* The unit blinks slowly so the corner has one living thing in it, and nothing else moves. */
+  .guide-eye { animation: guide-blink 7s var(--ease) infinite; }
+  @keyframes guide-blink { 0%, 92%, 100% { transform: scaleY(1); } 96% { transform: scaleY(0.15); } }
+  .guide-toggle:hover .guide-unit { transform: translateY(-1px); transition: transform 500ms var(--ease); }
+}
+
+@media (max-width: 720px) {
+  .guide-toggle-text { display: none; }
 }

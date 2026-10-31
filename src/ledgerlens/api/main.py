@@ -89,25 +89,35 @@ def _fpa_meta(db_path: Path) -> dict[str, Any] | None:
     return rows[0] if rows else None
 
 
+def page(name: str) -> FileResponse:
+    """An HTML page the browser must revalidate.
+
+    Same reasoning as RevalidatedStatic below, and the same bug if it is left off: the page names
+    the modules, so a cached shell keeps loading the modules it knew about and the new ones are
+    never asked for. A conditional request costs one 304.
+    """
+    return FileResponse(STATIC_DIR / name, headers={"cache-control": "no-cache"})
+
+
 @app.get("/", include_in_schema=False)
 def landing() -> FileResponse:
     """The public page. The workspace lives at /app so the two can look nothing alike."""
-    return FileResponse(STATIC_DIR / "landing.html")
+    return page("landing.html")
 
 
 @app.get("/app", include_in_schema=False)
 def workspace() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+    return page("index.html")
 
 
 @app.get("/terms", include_in_schema=False)
 def terms() -> FileResponse:
-    return FileResponse(STATIC_DIR / "terms.html")
+    return page("terms.html")
 
 
 @app.get("/privacy", include_in_schema=False)
 def privacy() -> FileResponse:
-    return FileResponse(STATIC_DIR / "privacy.html")
+    return page("privacy.html")
 
 
 @app.exception_handler(404)
@@ -115,7 +125,22 @@ async def not_found(request: Request, _: Exception) -> Response:
     """A page gets the styled 404; an API path keeps its JSON so callers can read it."""
     if request.url.path.startswith("/api/"):
         return JSONResponse({"detail": "not found"}, status_code=404)
-    return FileResponse(STATIC_DIR / "404.html", status_code=404)
+    return FileResponse(STATIC_DIR / "404.html", status_code=404, headers={"cache-control": "no-cache"})
 
 
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+class RevalidatedStatic(StaticFiles):
+    """Static files a browser must revalidate before reusing.
+
+    The pages are ES modules with stable names. With no Cache-Control a browser is free to invent a
+    freshness lifetime, so after a deploy a returning visitor keeps running yesterday's app.js against
+    today's API. `no-cache` still allows the cache, it just forces the conditional request, and the
+    answer is almost always a 304.
+    """
+
+    def file_response(self, *args: Any, **kwargs: Any) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers["cache-control"] = "no-cache"
+        return response
+
+
+app.mount("/static", RevalidatedStatic(directory=STATIC_DIR), name="static")

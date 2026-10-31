@@ -4,97 +4,12 @@
    fetches the real figure from the same governed tool the workspace uses and links to the page that
    shows it. No model is called, so it costs nothing and works on a deployment with no API key. */
 
+import { resolve } from "./guide.js";
+
 const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const hasGsap = typeof window.gsap !== "undefined" && typeof window.ScrollTrigger !== "undefined";
 window.__llReady = true;
 if (!hasGsap) document.documentElement.classList.remove("js");
-
-/* ---------- The guide ---------- */
-
-const INTENTS = [
-  {
-    match: /(net ?cash|cash flow|under plan|over plan|variance|bridge|month ?end|close)/i,
-    title: "Start with the cash bridge",
-    page: "/app#/fpa",
-    label: "Open FP&A",
-    body: "Actual against plan, split into volume, mix, rate and timing. The parts sum to the variance to the cent, and each one opens the rows behind it.",
-    figure: async () => {
-      const r = await call("fpa.bridge", { measure: "net_operating_cash", period: "2026-08" });
-      const v = pick(r, "variance net_operating_cash");
-      return v && `August net operating cash came in ${money(v.value)} against plan.`;
-    },
-  },
-  {
-    match: /(forecast|predict|13.?week|next quarter|model)/i,
-    title: "The forecast was tested once",
-    page: "/app#/fpa",
-    label: "Open FP&A",
-    body: "One model per driver, chosen by cross-validation, then tested a single time on six frozen months. Where nothing beat seasonal naive, seasonal naive stays and the page says so.",
-    figure: async () => "Median error 0.64 MASE against 1.01 for the baseline, beating it on 8 of 12 series.",
-  },
-  {
-    match: /(interview|hiring|candidate|bias|fair|panel|drift|adverse)/i,
-    title: "The process is measured, never the person",
-    page: "/app#/interviews",
-    label: "Open HR",
-    body: "Interviewers against their peers, panel agreement, selection rates by stage, and whether scores predict later performance. No candidate is ever scored, and groups under five people are suppressed.",
-    figure: async () => {
-      const r = await call("iv.plan_status", {});
-      const n = pick(r, "flagged interviewers");
-      return n && `This run flagged ${Math.round(n.value)} interviewer, out of 469 tests under one correction.`;
-    },
-  },
-  {
-    match: /(vendor|rate ?card|procure|supplier|invoice|overbill|panel of|spend|saving)/i,
-    title: "Vendors compared on total cost",
-    page: "/app#/ratecards",
-    label: "Open procurement",
-    body: "Billed titles mapped to standard roles, deals normalised to one hourly basis, and the cheapest panel that still covers every role. Each step of the saving traces to invoice lines.",
-    figure: async () => {
-      const r = await call("rc.leakage", {});
-      const n = pick(r, "overbill lines all vendors");
-      return n && `${Math.round(n.value).toLocaleString("en-US")} invoice lines are billed above the contracted card.`;
-    },
-  },
-  {
-    match: /(lineage|trace|prove|trust|how do i know|audit|where.*from|right\??$)/i,
-    title: "Every figure resolves to its rows",
-    page: "/app#/audit",
-    label: "Open audit and cost",
-    body: "A number arrives with an id. Click it and you get the query that produced it, the source tables and the row ids. If an answer ever cites a figure the record does not support, it is refused rather than shown.",
-    figure: async () => "Run cost, tool calls and approvals stay queryable long after the answer.",
-  },
-  {
-    match: /(approve|approval|who can|permission|sign ?off)/i,
-    title: "Agents propose, people approve",
-    page: "/app#/approvals",
-    label: "Open approvals",
-    body: "Anything that writes becomes a proposal and waits for a named person. This deployment lists the queue read-only, because a public URL cannot name anybody.",
-    figure: async () => null,
-  },
-];
-
-const FALLBACK = {
-  title: "Three places to start",
-  page: "/app#/fpa",
-  label: "Open the workspace",
-  body: "FP&A for cash and variance, HR for interview quality and fairness, procurement for vendor cost. Every page works the same way: click a number, see its rows.",
-  figure: async () => null,
-};
-
-async function call(tool, params) {
-  const response = await fetch(`/api/tools/${tool}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(params),
-  });
-  if (!response.ok) throw new Error(`${tool} unavailable`);
-  return response.json();
-}
-
-const pick = (result, prefix) => (result.numbers || []).find((n) => n.label.startsWith(prefix));
-const money = (v) =>
-  `${v < 0 ? "-" : "+"}$${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
 
 const answerBox = document.querySelector("[data-answer]");
 
@@ -137,7 +52,7 @@ function renderAnswer(intent, figure) {
 }
 
 async function answer(question) {
-  const intent = INTENTS.find((i) => i.match.test(question)) || FALLBACK;
+  const intent = resolve(question);
   renderAnswer(intent, null);
   try {
     // The headline figure comes from the governed tool, so the guide never states a number of its own.

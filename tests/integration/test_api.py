@@ -5,6 +5,8 @@ arrive with a lineage id that resolves, approvals need a named human, and a shar
 decide at all.
 """
 
+import posixpath
+import re
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -13,7 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from ledgerlens.api import deps
-from ledgerlens.api.main import app
+from ledgerlens.api.main import STATIC_DIR, app
 from ledgerlens.core.approvals import ApprovalQueue
 from ledgerlens.core.db import connect
 from ledgerlens.core.lineage import new_id
@@ -186,6 +188,52 @@ def test_a_missing_page_gets_the_styled_404_and_a_missing_api_path_gets_json(cli
     api = client.get("/api/nope")
     assert api.status_code == 404
     assert api.json()["detail"] == "not found", "a caller needs JSON, not a page"
+
+
+@pytest.mark.parametrize("path", ["/static/app.js", "/", "/app", "/terms", "/privacy"])
+def test_what_the_browser_caches_must_be_revalidated(client: TestClient, path: str):
+    # Without this a returning visitor keeps running an old shell and old modules against a new API.
+    assert client.get(path).headers["cache-control"] == "no-cache"
+
+
+def test_every_page_the_tabs_offer_is_a_module_that_exists(client: TestClient):
+    workspace = client.get("/app").text
+    tabs = re.findall(r'data-tab="([a-z]+)"', workspace)
+    assert set(tabs) == {"fpa", "interviews", "ratecards", "method", "approvals", "audit"}
+
+    router = client.get("/static/app.js").text
+    for tab in tabs:
+        assert f"./pages/{tab}.js" in router, f"the {tab} tab has no module imported"
+        assert client.get(f"/static/pages/{tab}.js").status_code == 200, tab
+
+
+def test_every_module_a_module_imports_is_served(client: TestClient):
+    """A relative import that points nowhere is a 404 the browser reports and the suite misses.
+
+    The landing page and the workspace share the guide's intent table, so this is the seam where a
+    renamed file would quietly break one of the two pages.
+    """
+    seen = 0
+    for module in STATIC_DIR.rglob("*.js"):
+        here = module.parent.relative_to(STATIC_DIR)
+        for target in re.findall(r'from "(\.{1,2}/[^"]+)"', module.read_text(encoding="utf-8")):
+            served = posixpath.normpath(posixpath.join(here.as_posix(), target))
+            assert client.get(f"/static/{served}").status_code == 200, f"{module.name} imports {target}"
+            seen += 1
+    assert seen >= 2, "no relative imports found; this guard is checking nothing"
+
+
+def test_the_shell_holds_every_element_the_router_writes_into(client: TestClient):
+    """app.js reaches for these by id, so one dropped from the page is a TypeError only a browser sees.
+
+    The rail replaced the old top bar and the ids moved with it; this is what notices next time.
+    """
+    workspace = client.get("/app").text
+    router = client.get("/static/app.js").text
+    wanted = set(re.findall(r'getElementById\("([\w-]+)"\)', router))
+    assert wanted, "the router stopped looking elements up by id; this guard needs rewriting"
+    served = set(re.findall(r'id="([\w-]+)"', workspace))
+    assert wanted <= served, f"the workspace is missing: {sorted(wanted - served)}"
 
 
 @pytest.mark.parametrize("path", ["/terms", "/privacy"])

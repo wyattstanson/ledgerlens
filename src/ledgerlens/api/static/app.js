@@ -1,13 +1,15 @@
-/* Shell: hash routing between the five pages, the footer's running cost, and the lineage drawer. */
+/* Shell: hash routing between the six pages, the rail's running cost, and the lineage drawer. */
 
+import { focusOn, mount as mountGuide } from "./assistant.js";
 import { closeLineage, el, flushAttached, getJson, note, resetAttached, revealAll, skeleton } from "./lib.js";
 import * as approvals from "./pages/approvals.js";
 import * as audit from "./pages/audit.js";
 import * as fpa from "./pages/fpa.js";
 import * as interviews from "./pages/interviews.js";
+import * as method from "./pages/method.js";
 import * as ratecards from "./pages/ratecards.js";
 
-const PAGES = { fpa, interviews, ratecards, approvals, audit };
+const PAGES = { fpa, interviews, ratecards, method, approvals, audit };
 const DEFAULT_PAGE = "fpa";
 
 const view = document.getElementById("view");
@@ -22,10 +24,12 @@ function currentPage() {
 }
 
 function markTab(name) {
-  for (const tab of document.querySelectorAll(".tabs a")) {
+  for (const tab of document.querySelectorAll(".rail-nav a")) {
     if (tab.dataset.tab === name) tab.setAttribute("aria-current", "page");
     else tab.removeAttribute("aria-current");
   }
+  document.getElementById("workbar-page").textContent = PAGES[name].title;
+  focusOn(name);
   document.title = `${PAGES[name].title} · LedgerLens`;
 }
 
@@ -52,7 +56,7 @@ async function show(name) {
   }
 }
 
-async function footer() {
+async function standing() {
   const scope = document.getElementById("footer-scope");
   const cost = document.getElementById("footer-cost");
   try {
@@ -72,5 +76,6 @@ document.addEventListener("keydown", (event) => {
 });
 window.addEventListener("hashchange", () => show(currentPage()));
 
+mountGuide();
 await show(currentPage());
-await footer();
+await standing();
