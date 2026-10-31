@@ -2,7 +2,7 @@
    Cells with fewer than five people are suppressed before they reach this page. */
 
 import {
-  callTool, card, chartTheme, chartBox, drawChart, el, findNumber, fmt,
+  callTool, card, countUp, chartTheme, chartBox, drawChart, el, findNumber, fmt,
   note, onAttached, section, titleCase, traced,
 } from "../lib.js";
 
@@ -76,7 +76,7 @@ function planCards(plan) {
     wanted.map(([label, text], i) => {
       const number = findNumber(plan, label);
       return card(
-        [el("span", { class: "kpi-label", text }), el("span", { class: "kpi-value" }, [traced(number)])],
+        [el("span", { class: "kpi-label", text }), countUp(el("span", { class: "kpi-value" }, [traced(number)]), number)],
         { delay: i * 50 },
       );
     }),

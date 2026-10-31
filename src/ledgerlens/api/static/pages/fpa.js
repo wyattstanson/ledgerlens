@@ -1,7 +1,7 @@
 /* FP&A: what the month did against plan, what the bridge says, and what the reviewed models expect. */
 
 import {
-  callTool, card, chartTheme, chartBox, drawChart, el, findNumber, fmt,
+  callTool, card, countUp, chartTheme, chartBox, drawChart, el, findNumber, fmt,
   matchNumbers, note, onAttached, section, titleCase, traced,
 } from "../lib.js";
 
@@ -70,7 +70,7 @@ function flagCards(flags, period) {
       return card(
         [
           el("span", { class: "kpi-label", text: titleCase(flag.measure) }),
-          el("span", { class: "kpi-value" }, [traced(number)]),
+          countUp(el("span", { class: "kpi-value" }, [traced(number)]), number),
           el("span", {
             class: `badge badge--${flag.favourable ? "ok" : "flag"}`,
             text: `${flag.status}, ${direction}`,
@@ -157,7 +157,7 @@ function agingCards(aging) {
       return card(
         [
           el("span", { class: "kpi-label", text: titleCase(name) }),
-          el("span", { class: "kpi-value" }, [traced(bucket)]),
+          countUp(el("span", { class: "kpi-value" }, [traced(bucket)]), bucket),
           el("span", { class: "kpi-note" }, [items ? traced(items, `${fmt(items.value, "count")} invoices`) : "no count"]),
         ],
         { delay: i * 60 },

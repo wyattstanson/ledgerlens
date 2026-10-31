@@ -138,6 +138,25 @@ export function traced(number, text) {
   });
 }
 
+/** Count a headline figure up from zero once, when it first arrives on screen. */
+export function countUp(node, number, format = (v) => fmt(v, number.unit)) {
+  if (REDUCED || !number) return node;
+  const final = node.textContent;
+  node.textContent = format(0);
+  onAttached(() => {
+    const started = performance.now();
+    const step = (now) => {
+      // Same easing as the CSS, so a counting number and the card it sits in settle together.
+      const t = Math.min(1, (now - started) / 900);
+      const eased = 1 - Math.pow(1 - t, 3);
+      node.textContent = t < 1 ? format(number.value * eased) : final;
+      if (t < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
+  return node;
+}
+
 /* ---------- Lineage drawer ---------- */
 
 const drawer = () => document.getElementById("drawer");
@@ -230,7 +249,7 @@ export function chartTheme() {
     layout: {
       paper_bgcolor: "rgba(0,0,0,0)",
       plot_bgcolor: "rgba(0,0,0,0)",
-      font: { family: "IBM Plex Sans, system-ui, sans-serif", size: 12, color: ink },
+      font: { family: "Poppins, system-ui, sans-serif", size: 12, color: ink },
       margin: { l: 64, r: 16, t: 28, b: 52 },
       xaxis: { gridcolor: line, zerolinecolor: line, automargin: true },
       yaxis: { gridcolor: line, zerolinecolor: line, automargin: true },

@@ -71,14 +71,14 @@ max-args = 10
 [tool.pyright]
 typeCheckingMode = "standard"
 pythonVersion = "3.13"
-include = ["src", "tests"]
-extraPaths = ["tests"]
+include = ["src", "tests", "scripts"]
+extraPaths = ["tests", "scripts"]
 venvPath = "."
 venv = ".venv"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["tests"]
+pythonpath = ["tests", "scripts"]
 addopts = "-ra"
 filterwarnings = [
   "ignore:sqlglotrs is deprecated:DeprecationWarning",

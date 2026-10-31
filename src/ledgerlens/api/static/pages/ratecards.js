@@ -1,7 +1,7 @@
 /* Rate cards: what the panel would cost, where the savings come from, and what is billed above contract. */
 
 import {
-  callTool, card, chartTheme, chartBox, compactMoney, drawChart, el, findNumber, fmt,
+  callTool, card, countUp, chartTheme, chartBox, compactMoney, drawChart, el, findNumber, fmt,
   note, onAttached, section, titleCase, traced,
 } from "../lib.js";
 
@@ -61,7 +61,7 @@ function headline(bridge, panel) {
   return el("div", { class: "cards" }, [
     card([
       el("span", { class: "kpi-label", text: "Cost today, 12 months" }),
-      el("span", { class: "kpi-value" }, [traced(current, current ? compactMoney(current.value) : undefined)]),
+      countUp(el("span", { class: "kpi-value" }, [traced(current, current ? compactMoney(current.value) : undefined)]), current, compactMoney),
     ]),
     card(
       [
@@ -79,7 +79,7 @@ function headline(bridge, panel) {
     card(
       [
         el("span", { class: "kpi-label", text: "Vendors kept" }),
-        el("span", { class: "kpi-value" }, [traced(kept)]),
+        countUp(el("span", { class: "kpi-value" }, [traced(kept)]), kept),
         el("span", { class: "kpi-note", text: `of a ${panel.data?.panel_size_limit} vendor limit, status ${panel.data?.status}` }),
       ],
       { delay: 120 },

@@ -1,7 +1,10 @@
-# Render blueprint (ADR 0002). One free web service; the synthetic warehouse is built at build time,
-# because a free instance's disk is ephemeral and rebuilding on every start would delay the first page.
+# Render blueprint (ADR 0002). One free web service.
 #
-# Approvals stay read-only here: deciding one needs a named human, and this URL cannot name anybody.
+# The warehouse is shipped prebuilt and unpacked here, not generated: building the world needs about
+# 520 MB (the rate card pipeline's peak) and a free instance has 512 MB, while serving it needs about
+# 215 MB. Rebuild it with `uv run python scripts/export_demo_warehouse.py` and commit the result.
+#
+# Approvals stay read-only: deciding one needs a named human, and this URL cannot name anybody.
 # ANTHROPIC_API_KEY is deliberately absent, so the deployment runs fully offline and the agents are off.
 services:
   - type: web
@@ -13,11 +16,8 @@ services:
     buildCommand: |
       pip install uv
       uv sync --no-dev
-      uv run python -m ledgerlens.cli generate --seed 42
-      uv run python -m ledgerlens.cli pipeline ratecards --simulate-review
-      uv run python -m ledgerlens.cli pipeline interviews
-      uv run python -m ledgerlens.cli pipeline fpa
-      uv run python -m ledgerlens.cli forecast fpa
+      mkdir -p data
+      gunzip -c deploy/warehouse.duckdb.gz > data/warehouse.duckdb
     startCommand: uv run uvicorn ledgerlens.api.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
