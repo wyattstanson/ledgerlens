@@ -10,17 +10,20 @@ from pathlib import Path
 from typing import Annotated, Any
 
 import duckdb
-from fastapi import Depends, FastAPI, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from ledgerlens import __version__
 from ledgerlens.api import routes_audit, routes_compute, routes_tools
 from ledgerlens.api.deps import settings, warehouse
+from ledgerlens.api.offices import OFFICES
 from ledgerlens.core.db import NO_EXTERNAL_ACCESS, connect, ensure_audit_schema, fetch_dicts
 from ledgerlens.settings import Settings
 
 STATIC_DIR = Path(__file__).parent / "static"
+TEMPLATES = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
 DESCRIPTION = (
     "Governed analytics for FP&A, interview quality and rate cards. Every number comes from a tested "
@@ -109,6 +112,24 @@ def landing() -> FileResponse:
 @app.get("/app", include_in_schema=False)
 def workspace() -> FileResponse:
     return page("index.html")
+
+
+@app.get("/for/{slug}", include_in_schema=False)
+def office(request: Request, slug: str) -> Response:
+    """One office's own page, in that office's words.
+
+    Three pages from one template, so the governance paragraph they share cannot drift between them.
+    """
+    try:
+        this = OFFICES[slug]
+    except KeyError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no such page") from None
+    return TEMPLATES.TemplateResponse(
+        request,
+        "office.html",
+        {"office": this, "offices": list(OFFICES.values())},
+        headers={"cache-control": "no-cache"},
+    )
 
 
 @app.get("/terms", include_in_schema=False)

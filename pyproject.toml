@@ -15,6 +15,8 @@ dependencies = [
     "duckdb>=1.5.6",
     "faker>=40",
     "fastapi>=0.146",
+    # Already present through dagster and dbt, but the office pages render with it, so it is declared.
+    "jinja2>=3.1.6",
     "mcp>=2.3",
     "numpy>=2.5",
     "opentelemetry-sdk>=1.45",

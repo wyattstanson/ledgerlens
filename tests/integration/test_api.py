@@ -5,6 +5,7 @@ arrive with a lineage id that resolves, approvals need a named human, and a shar
 decide at all.
 """
 
+import html
 import posixpath
 import re
 from collections.abc import Iterator
@@ -16,6 +17,7 @@ from fastapi.testclient import TestClient
 
 from ledgerlens.api import deps
 from ledgerlens.api.main import STATIC_DIR, app
+from ledgerlens.api.offices import OFFICES
 from ledgerlens.core.approvals import ApprovalQueue
 from ledgerlens.core.db import connect
 from ledgerlens.core.lineage import new_id
@@ -190,7 +192,7 @@ def test_a_missing_page_gets_the_styled_404_and_a_missing_api_path_gets_json(cli
     assert api.json()["detail"] == "not found", "a caller needs JSON, not a page"
 
 
-@pytest.mark.parametrize("path", ["/static/app.js", "/", "/app", "/terms", "/privacy"])
+@pytest.mark.parametrize("path", ["/static/app.js", "/", "/app", "/terms", "/privacy", "/for/fpa"])
 def test_what_the_browser_caches_must_be_revalidated(client: TestClient, path: str):
     # Without this a returning visitor keeps running an old shell and old modules against a new API.
     assert client.get(path).headers["cache-control"] == "no-cache"
@@ -249,6 +251,41 @@ def test_every_rail_link_carries_a_word_as_well_as_an_icon(client: TestClient):
     for link in links:
         assert "rail-icon" in link, link
         assert re.search(r'class="rail-word">[^<]+</span>', link), f"this link has no word: {link}"
+
+
+@pytest.mark.parametrize("slug", sorted(OFFICES))
+def test_each_office_gets_its_own_page(client: TestClient, slug: str):
+    office = OFFICES[slug]
+    page = client.get(f"/for/{slug}")
+    assert page.status_code == 200
+    # The template escapes, so FP&A reaches the page as FP&amp;A; compare like for like.
+    assert html.escape(office.title) in page.text, "the page is not the one the office asked for"
+    assert office.workspace in page.text, "an office page with no way into its pack is a dead end"
+    assert html.escape(office.problems[0].quote) in page.text
+
+
+def test_an_office_that_does_not_exist_gets_the_styled_404(client: TestClient):
+    page = client.get("/for/accounting")
+    assert page.status_code == 404
+    assert "That page" in page.text
+
+
+@pytest.mark.parametrize("slug", sorted(OFFICES))
+def test_an_office_page_carries_everything_landing_js_drives(client: TestClient, slug: str):
+    """The office pages share landing.js, which reaches for these without checking.
+
+    One missing node is a TypeError that stops the script before the reveals run, leaving the page
+    blank in exactly the way a visitor would blame on the product.
+    """
+    page = client.get(f"/for/{slug}").text
+    for hook in ("data-nav", "data-burger", "data-menu", "data-ask", "data-ask-input", "data-year"):
+        assert hook in page, hook
+    assert 'class="hero"' in page, "landing.js animates the hero by class"
+
+
+def test_the_landing_page_links_only_to_offices_that_exist(client: TestClient):
+    linked = set(re.findall(r'href="/for/([a-z]+)"', client.get("/").text))
+    assert linked == set(OFFICES), f"the landing page and the office table disagree: {linked}"
 
 
 @pytest.mark.parametrize("path", ["/terms", "/privacy"])
