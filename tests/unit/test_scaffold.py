@@ -1,11 +1,10 @@
-"""Phase 0 scaffold checks: package, dbt manifest, Dagster definitions, Streamlit app."""
+"""Scaffold checks: package version, the dbt manifest and the Dagster definitions."""
 
 import json
 import tomllib
 from pathlib import Path
 
 import dagster as dg
-from streamlit.testing.v1 import AppTest
 
 import ledgerlens
 
@@ -42,14 +41,3 @@ def test_dagster_definitions_load_dbt_assets(dbt_manifest: Path):
         "forecast_actuals_within_interval",
     } <= check_names
     assert isinstance(defs, dg.Definitions)
-
-
-def test_streamlit_home_renders_without_errors():
-    at = AppTest.from_file(str(REPO_ROOT / "app" / "Home.py")).run(timeout=30)
-    assert not at.exception
-    assert at.title[0].value == "LedgerLens"
-
-
-def test_streamlit_usage_stats_disabled():
-    config = tomllib.loads((REPO_ROOT / ".streamlit" / "config.toml").read_text(encoding="utf-8"))
-    assert config["browser"]["gatherUsageStats"] is False

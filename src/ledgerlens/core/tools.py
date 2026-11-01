@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ledgerlens.core.approvals import ApprovalError, ApprovalQueue
 from ledgerlens.core.db import connect, utcnow
-from ledgerlens.core.lineage import NumberRef, new_id, record_lineage, sha256_text
+from ledgerlens.core.lineage import NumberRef, new_id, pending_lineage, sha256_text, write_lineage
 
 # Registry names are dotted ("rc.optimize_panel"); the Messages API only accepts [A-Za-z0-9_-],
 # so dots become "__" on the wire.
@@ -46,6 +46,9 @@ class ToolContext:
     db_path: Path
     agent_run_id: str
     tool_call_id: str
+    # Lineage rows for the numbers this call has made. ``execute_tool`` writes them in one go once the
+    # result is known good: a connection costs about 100 ms, and one tool can cite a hundred numbers.
+    lineage_rows: list[list[Any]] = field(default_factory=list)
 
     def number(
         self,
@@ -57,8 +60,7 @@ class ToolContext:
         source_tables: Sequence[str],
         row_ids: Sequence[str | int],
     ) -> NumberRef:
-        return record_lineage(
-            self.db_path,
+        number, row = pending_lineage(
             tool_call_id=self.tool_call_id,
             label=label,
             value=value,
@@ -67,6 +69,8 @@ class ToolContext:
             source_tables=source_tables,
             row_ids=row_ids,
         )
+        self.lineage_rows.append(row)
+        return number
 
 
 ToolFn = Callable[[Any, ToolContext], ToolResult]
@@ -156,8 +160,9 @@ def execute_tool(tool: Tool, raw_input: Mapping[str, Any], *, db_path: Path, age
         except ApprovalError:
             finish("refused")
             raise
+    ctx = ToolContext(db_path, agent_run_id, tool_call_id)
     try:
-        result = tool.fn(params, ToolContext(db_path, agent_run_id, tool_call_id))
+        result = tool.fn(params, ctx)
         if not isinstance(result, ToolResult):
             raise TypeError(f"{tool.name} must return ToolResult, got {type(result).__name__}")
     except Exception:
@@ -167,11 +172,11 @@ def execute_tool(tool: Tool, raw_input: Mapping[str, Any], *, db_path: Path, age
         try:
             tool.output_guard(result)
         except Exception as exc:
-            # The tool body already recorded lineage for its numbers; a blocked result leaves none behind.
-            with connect(db_path) as conn:
-                conn.execute("delete from audit.lineage where tool_call_id = ?", [tool_call_id])
+            # Lineage is still unwritten at this point, so a blocked result simply leaves none behind.
             finish("blocked")
             raise OutputBlockedError(f"{tool.name}: result blocked by its output guard ({exc})") from exc
+    # Written before the caller sees the result, so every number it cites already resolves.
+    write_lineage(db_path, ctx.lineage_rows)
     finish("ok", sha256_text(result.model_dump_json()))
     return result
 

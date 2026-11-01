@@ -118,3 +118,41 @@ def test_llm_spend_rejects_malformed_month(db: Path):
 
 def test_utcnow_is_naive():
     assert utcnow().tzinfo is None
+
+
+def many_numbers(params: Closed, ctx: ToolContext) -> ToolResult:
+    numbers = [
+        ctx.number(
+            label=f"n{i}",
+            value=float(i),
+            unit="count",
+            sql_text=f"select {i}",
+            source_tables=["t"],
+            row_ids=[i],
+        )
+        for i in range(params.value)
+    ]
+    return ToolResult(data={"n": params.value}, numbers=numbers)
+
+
+def test_every_number_a_tool_makes_is_written_once_and_resolves(db: Path):
+    """Lineage is batched for speed, so prove the batch is complete and matches what was returned."""
+    tool = Tool(name="t.many", description="d", input_model=Closed, fn=many_numbers)
+    result = execute_tool(tool, {"value": 25}, db_path=db, agent_run_id="run_many")
+
+    with connect(db) as conn:
+        stored = dict(conn.execute("select lineage_id, value from audit.lineage").fetchall())
+    assert len(stored) == 25, "every number must leave exactly one lineage row"
+    assert {n.lineage_id: n.value for n in result.numbers} == stored
+
+
+def test_a_tool_that_fails_after_citing_numbers_leaves_no_lineage(db: Path):
+    def cite_then_fail(params: Closed, ctx: ToolContext) -> ToolResult:
+        many_numbers(params, ctx)
+        raise RuntimeError("compute failed after citing")
+
+    tool = Tool(name="t.halfway", description="d", input_model=Closed, fn=cite_then_fail)
+    with pytest.raises(RuntimeError, match="after citing"):
+        execute_tool(tool, {"value": 5}, db_path=db, agent_run_id="run_fail")
+    with connect(db) as conn:
+        assert conn.execute("select count(*) from audit.lineage").fetchone() == (0,)

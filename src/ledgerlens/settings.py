@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     config_dir: Path = Path("config")
     seed: int = 42
     min_group_n: int = Field(default=5, ge=1)
+    # Deciding an approval needs a named human at the keyboard, so the web UI may only do it where the
+    # operator is that human: a local run. On a shared URL (Render) the queue stays read-only (ADR 0002).
+    allow_approvals: bool = False
     anthropic_api_key: SecretStr | None = Field(
         default=None, validation_alias=AliasChoices("ANTHROPIC_API_KEY", "LEDGERLENS_ANTHROPIC_API_KEY")
     )

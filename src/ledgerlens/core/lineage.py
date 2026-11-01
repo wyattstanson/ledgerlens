@@ -11,6 +11,7 @@ import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -36,6 +37,46 @@ def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def pending_lineage(
+    *,
+    tool_call_id: str,
+    label: str,
+    value: float,
+    unit: str,
+    sql_text: str,
+    source_tables: Sequence[str],
+    row_ids: Sequence[str | int],
+) -> tuple[NumberRef, list[Any]]:
+    """The number and the row that will back it, without touching the database.
+
+    Opening a DuckDB connection costs about a tenth of a second on a warehouse of any size, so a tool
+    that cites a hundred numbers cannot afford one connection each. Callers collect these rows and
+    write them together with ``write_lineage``; the number carries its id from the moment it is made.
+    """
+    if not math.isfinite(value):
+        raise ValueError(f"lineage value for {label!r} must be finite, got {value!r}")
+    lineage_id = new_id("ln")
+    row = [
+        lineage_id,
+        tool_call_id,
+        sha256_text(sql_text),
+        sql_text,
+        list(source_tables),
+        [str(r) for r in row_ids],
+        float(value),
+        unit,
+    ]
+    return NumberRef(label=label, value=float(value), unit=unit, lineage_id=lineage_id), row
+
+
+def write_lineage(db_path: Path, rows: Sequence[Sequence[Any]]) -> None:
+    """Write a batch of lineage rows on one connection."""
+    if not rows:
+        return
+    with connect(db_path) as conn:
+        conn.executemany("insert into audit.lineage values (?, ?, ?, ?, ?, ?, ?, ?)", [list(r) for r in rows])
+
+
 def record_lineage(
     db_path: Path,
     *,
@@ -48,24 +89,17 @@ def record_lineage(
     row_ids: Sequence[str | int],
 ) -> NumberRef:
     """Persist one lineage row and return the number that cites it. Row ids are stored as text."""
-    if not math.isfinite(value):
-        raise ValueError(f"lineage value for {label!r} must be finite, got {value!r}")
-    lineage_id = new_id("ln")
-    with connect(db_path) as conn:
-        conn.execute(
-            "insert into audit.lineage values (?, ?, ?, ?, ?, ?, ?, ?)",
-            [
-                lineage_id,
-                tool_call_id,
-                sha256_text(sql_text),
-                sql_text,
-                list(source_tables),
-                [str(r) for r in row_ids],
-                float(value),
-                unit,
-            ],
-        )
-    return NumberRef(label=label, value=float(value), unit=unit, lineage_id=lineage_id)
+    number, row = pending_lineage(
+        tool_call_id=tool_call_id,
+        label=label,
+        value=value,
+        unit=unit,
+        sql_text=sql_text,
+        source_tables=source_tables,
+        row_ids=row_ids,
+    )
+    write_lineage(db_path, [row])
+    return number
 
 
 def lineage_values_for_run(db_path: Path, agent_run_id: str) -> dict[str, float]:
