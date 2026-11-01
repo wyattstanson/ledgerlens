@@ -117,7 +117,15 @@ if (hasGsap) {
     gsap
       .timeline({ defaults: { ease: "expo.out" } })
       .from(hero.querySelectorAll("[data-lines] > span > i"), { yPercent: 115, duration: 1.2, stagger: 0.09 }, 0.15)
-      .from(hero.querySelectorAll("[data-fade]"), { y: 24, opacity: 0, filter: "blur(7px)", duration: 1, stagger: 0.1 }, 0.5)
+      // fromTo, not from: the stylesheet pre-hides [data-fade] so nothing flashes before GSAP loads,
+      // and `from` would read that 0 as the tween's destination and animate the hero's eyebrow and
+      // lede from invisible to invisible.
+      .fromTo(
+        hero.querySelectorAll("[data-fade]"),
+        { y: 24, opacity: 0, filter: "blur(7px)" },
+        { y: 0, opacity: 1, filter: "blur(0px)", duration: 1, stagger: 0.1 },
+        0.5,
+      )
       .from(".ask", { y: 20, opacity: 0, duration: 1 }, 0.75)
       .from(".suggestions button", { y: 14, opacity: 0, duration: 0.8, stagger: 0.06 }, 0.95);
 

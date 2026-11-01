@@ -91,15 +91,43 @@ a { color: inherit; text-decoration: none; }
 /* ---------- Type ---------- */
 
 .eyebrow {
+  display: inline-flex; align-items: center; gap: 0.5rem;
   width: fit-content; padding: 0.3rem 0.85rem; border-radius: 999px;
   font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.16em; text-transform: uppercase;
   color: var(--ink-70); box-shadow: inset 0 0 0 1px var(--line);
+}
+/* The dot is the tag's tell: it reads as a status light rather than as decoration. */
+.eyebrow::before {
+  content: ""; width: 0.38rem; height: 0.38rem; flex: none;
+  border-radius: 50%; background: var(--orange);
 }
 .display {
   display: flex; flex-direction: column;
   font-size: clamp(2.6rem, 8vw, 6.5rem); font-weight: 700; line-height: 0.98; letter-spacing: -0.04em;
 }
 .display .accent { color: var(--orange); }
+
+/* Headline blocks: each line sits in its own solid slab, so the reveal lifts a block of colour out
+   of the mask rather than a row of letters. The paper slab carries navy ink and the accent slab
+   carries white, which is the one place the palette inverts.
+
+   Two selectors because the mask is built by script: with GSAP the line's text is moved into an
+   <i>, and without it the <span> is still the line, so both have to be able to be the slab. */
+/* The .js [data-lines] rule above sets the <i> to block, so these have to out-specify it or the
+   slab stretches the full width of the column instead of hugging its line. */
+.js [data-lines].display--blocks > span > i,
+.display--blocks > span:not(:has(i)) {
+  display: inline-block;
+  padding: 0.04em 0.26em 0.14em;
+  background: var(--paper); color: var(--navy);
+}
+.js [data-lines].display--blocks > span.accent > i,
+.display--blocks > span.accent:not(:has(i)) { background: var(--orange); color: #fff; }
+/* The mask clips at the padding box, so the slab's own bottom padding needs room here or the last
+   line loses its descenders as it arrives. */
+.display--blocks > span { padding-bottom: 0.16em; }
+.display--blocks { line-height: 1.1; gap: 0.1em; align-items: flex-start; }
+.display--closing.display--blocks { align-items: center; text-align: center; }
 .section-title {
   display: flex; flex-direction: column;
   font-size: clamp(2rem, 5.5vw, 4.2rem); font-weight: 700; line-height: 1; letter-spacing: -0.035em;
@@ -193,7 +221,16 @@ a { color: inherit; text-decoration: none; }
 /* ---------- Proof ---------- */
 
 .proof { max-width: 86rem; margin: 0 auto; padding: clamp(6rem, 12vw, 11rem) var(--gutter); display: flex; flex-direction: column; gap: 1.2rem; }
-.proof-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; margin-top: 2rem; }
+.proof-grid {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; margin-top: 2rem;
+}
+/* A bento rather than four equal tiles: the lead figure takes the height it deserves and the last
+   card inverts to paper, so the eye has somewhere to land on the way down. */
+.proof-grid > :first-child { grid-column: span 2; grid-row: span 2; }
+.proof-grid > :first-child .proof-figure { font-size: clamp(2.6rem, 6vw, 4.6rem); }
+.proof-grid > :last-child { background: var(--paper); box-shadow: none; }
+.proof-grid > :last-child p:not(.proof-figure) { color: rgba(0, 6, 31, 0.72); }
+.proof-grid > :last-child .tag { color: rgba(0, 6, 31, 0.6); box-shadow: inset 0 0 0 1px rgba(0, 6, 31, 0.14); }
 .proof-card {
   display: flex; flex-direction: column; gap: 0.7rem;
   padding: clamp(1.4rem, 3vw, 2rem); border-radius: var(--radius);
@@ -249,6 +286,9 @@ a { color: inherit; text-decoration: none; }
 }
 
 @media (max-width: 860px) {
+  /* The bento is a column on a phone: spans reset or the lead card squeezes the rest to nothing. */
+  .proof-grid { grid-template-columns: minmax(0, 1fr); }
+  .proof-grid > :first-child { grid-column: auto; grid-row: auto; }
   .nav { left: 1rem; right: 1rem; justify-content: space-between; transform: none; }
   .nav.is-tight { transform: none; }
   .nav-links, .nav-cta { display: none; }
