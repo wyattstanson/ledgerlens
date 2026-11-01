@@ -12,6 +12,10 @@ services:
     runtime: python
     plan: free
     region: oregon
+    # Pinned, because a blueprint tracks the repository's default branch and main is six unmerged
+    # PRs behind this one: deploying main would serve a repository with no API and no warehouse.
+    # Drop this line once the stack lands on main.
+    branch: phase-5-api
     healthCheckPath: /healthz
     buildCommand: |
       pip install uv
