@@ -15,7 +15,24 @@
 <body class="app">
   <div class="grain" aria-hidden="true"></div>
 
-  <!-- The desk rail. No upper bar: navigation sits on the left and stays put while the work scrolls. -->
+  <!-- The window's title bar. Not a navigation bar: it names the window and carries its three
+       controls, each of which does something. Navigation is the rail, on the left. -->
+  <div class="titlebar">
+    <div class="lights">
+      <button type="button" class="light light--close" id="light-close" title="Leave the workspace">
+        <span class="sr-only">Leave the workspace</span>
+      </button>
+      <button type="button" class="light light--min" id="light-min" title="Collapse the sidebar">
+        <span class="sr-only">Collapse the sidebar</span>
+      </button>
+      <button type="button" class="light light--zoom" id="light-zoom" title="Fill the screen">
+        <span class="sr-only">Fill the screen</span>
+      </button>
+    </div>
+    <p class="titlebar-name"><b id="titlebar-page">FP&amp;A</b><span>LedgerLens</span></p>
+  </div>
+
+  <!-- Navigation sits on the left and stays put while the work scrolls. -->
   <nav class="rail" aria-label="Workspace">
     <div class="rail-head">
       <a class="brand" href="#/fpa">
@@ -53,7 +70,6 @@
   <div class="workspace">
     <!-- The status strip: which warehouse is loaded, and what this deployment is allowed to do. -->
     <div class="workbar">
-      <p class="crumb"><span>Workspace</span><b id="workbar-page">FP&amp;A</b></p>
       <span class="scope-strip" id="footer-scope"></span>
       <span class="synthetic-tag">Synthetic data</span>
     </div>

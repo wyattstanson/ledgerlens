@@ -30,7 +30,7 @@ function markTab(name) {
     if (tab.dataset.tab === name) tab.setAttribute("aria-current", "page");
     else tab.removeAttribute("aria-current");
   }
-  document.getElementById("workbar-page").textContent = PAGES[name].title;
+  document.getElementById("titlebar-page").textContent = PAGES[name].title;
   focusOn(name);
   document.title = `${PAGES[name].title} · LedgerLens`;
 }
