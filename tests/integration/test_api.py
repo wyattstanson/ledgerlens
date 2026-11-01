@@ -239,6 +239,19 @@ def test_the_shell_holds_every_element_the_modules_write_into(client: TestClient
     assert wanted <= served, f"the workspace is missing: {sorted(wanted - served)}"
 
 
+def test_every_answer_the_guide_gives_points_at_a_page_that_exists(client: TestClient):
+    """The guide ends every answer with a link into the workspace.
+
+    A page named in the intent table that the router does not know routes the visitor back to FP&A
+    without saying anything, which looks like the guide ignoring the question it just answered.
+    """
+    guide = (STATIC_DIR / "guide.js").read_text(encoding="utf-8")
+    pages = set(re.findall(r'page: "/app#/([a-z]+)"', guide))
+    assert pages, "the intent table stopped naming pages; this guard needs rewriting"
+    tabs = set(re.findall(r'data-tab="([a-z]+)"', client.get("/app").text))
+    assert pages <= tabs, f"the guide points at pages that do not exist: {sorted(pages - tabs)}"
+
+
 def test_every_rail_link_carries_a_word_as_well_as_an_icon(client: TestClient):
     """Docked, the rail shows icons only and hides the words with CSS.
 

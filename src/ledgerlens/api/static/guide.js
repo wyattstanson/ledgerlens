@@ -69,6 +69,29 @@ const INTENTS = [
     body: "Anything that writes becomes a proposal and waits for a named person. This deployment lists the queue read-only, because a public URL cannot name anybody.",
     figure: async () => null,
   },
+  {
+    // Late in the table on purpose: "how is the bridge split" belongs to FP&A, and only a question
+    // that names the arithmetic itself should land on the Method page.
+    match: /(formula|equation|arithmetic|how is .* calculated|how do you compute|mase|kappa|cohen|z.?score|threshold|benjamini)/i,
+    title: "Every equation, with its inputs live",
+    page: "/app#/method",
+    label: "Open the method",
+    body: "Twenty-eight of them, grouped by office and by governance. Move an input and the result moves, so you can see how a rule behaves before you trust what it says about your month.",
+    figure: async () => null,
+  },
+  {
+    match: /(my own|our own|my numbers|my figures|try it|what if|upload|csv|before i|without a warehouse|my month)/i,
+    title: "Put your own figures through it",
+    page: "/app#/yours",
+    label: "Open your numbers",
+    body: "Your segments, your variance, your vendor rate, through the same tested functions the pack pages run. Nothing is stored, and nothing reads the warehouse, so the answers carry no lineage id and say so.",
+    figure: async () => {
+      // Computed when you ask, by the same function the rate-card page uses.
+      const r = await compute("rc.card_rate", { pricing_model: "outcome", rate: 110, productivity_commitment: 0.2 });
+      const rate = r.result?.effective_usd_per_hour;
+      return rate && `A $110 outcome rate with a 20% commitment comes back as $${rate.toFixed(0)} a baseline hour.`;
+    },
+  },
 ];
 
 const FALLBACK = {
@@ -89,6 +112,17 @@ async function call(tool, params) {
   return response.json();
 }
 
+/** The compute routes take a client's own figures, so they answer without touching the warehouse. */
+async function compute(name, payload) {
+  const response = await fetch(`/api/compute/${name}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`${name} unavailable`);
+  return response.json();
+}
+
 const pick = (result, prefix) => (result.numbers || []).find((n) => n.label.startsWith(prefix));
 const money = (v) =>
   `${v < 0 ? "-" : "+"}$${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
@@ -98,4 +132,4 @@ export function resolve(question) {
   return INTENTS.find((intent) => intent.match.test(question)) || FALLBACK;
 }
 
-export { INTENTS, FALLBACK, call, pick, money };
+export { INTENTS, FALLBACK, call, compute, pick, money };
