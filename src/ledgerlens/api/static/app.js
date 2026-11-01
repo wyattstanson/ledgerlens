@@ -1,6 +1,7 @@
 /* Shell: hash routing between the six pages, the rail's running cost, and the lineage drawer. */
 
 import { focusOn, mount as mountGuide } from "./assistant.js";
+import { mountDock } from "./dock.js";
 import { closeLineage, el, flushAttached, getJson, note, resetAttached, revealAll, skeleton } from "./lib.js";
 import * as approvals from "./pages/approvals.js";
 import * as audit from "./pages/audit.js";
@@ -77,6 +78,7 @@ document.addEventListener("keydown", (event) => {
 });
 window.addEventListener("hashchange", () => show(currentPage()));
 
+mountDock();
 mountGuide();
 await show(currentPage());
 await standing();

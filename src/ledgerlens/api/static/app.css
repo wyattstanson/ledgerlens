@@ -473,3 +473,60 @@ tbody tr:last-child td { border-bottom: 0; }
 .group-icon { font-size: 1.15rem; color: var(--accent); }
 .formula-name { display: flex; align-items: center; gap: 0.55rem; }
 .formula-icon { font-size: 1.15rem; color: var(--accent); }
+
+/* ---------- The rail, docked ---------- */
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+
+.rail-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 1.4rem; }
+.rail-head .brand { margin-bottom: 0; }
+.rail-dock {
+  display: grid; place-items: center; width: 1.7rem; height: 1.7rem; flex: none;
+  border: 0; border-radius: 0.5rem; background: none; color: var(--ink-50);
+  font-size: 1.05rem; cursor: pointer;
+  transition: background-color 450ms var(--ease), color 450ms var(--ease);
+}
+.rail-dock:hover { background: var(--accent-soft); color: var(--accent); }
+
+/* Docked: the rail is the width of its icons, and the words step aside. The labels stay in the
+   DOM rather than being replaced by title attributes, so every link keeps its accessible name. */
+.is-docked { grid-template-columns: 4rem minmax(0, 1fr); }
+.is-docked .rail { padding-left: 0.65rem; padding-right: 0.65rem; align-items: center; }
+.is-docked .rail-group,
+.is-docked .rail-foot,
+.is-docked .brand-word { display: none; }
+.is-docked .rail-head { justify-content: center; }
+.is-docked .brand { gap: 0; }
+.is-docked .rail-nav a { justify-content: center; padding: 0.5rem; }
+.is-docked .rail-word {
+  position: absolute; left: calc(100% + 0.65rem); z-index: 40;
+  padding: 0.3rem 0.6rem; border-radius: 0.5rem; white-space: nowrap;
+  background: var(--ink); color: var(--paper); font-size: 0.8rem;
+  opacity: 0; pointer-events: none;
+  transition: opacity 300ms var(--ease), transform 300ms var(--ease);
+  transform: translateX(-0.3rem);
+}
+.is-docked .rail-nav li { position: relative; }
+.is-docked .rail-nav a:hover .rail-word,
+.is-docked .rail-nav a:focus-visible .rail-word { opacity: 1; transform: none; }
+
+@media (prefers-reduced-motion: no-preference) {
+  /* The dock's one borrowed trick: the icon under the pointer grows and its neighbours lean in.
+     Transform only, so the row heights never move and nothing reflows. */
+  .is-docked .rail-nav li:hover .rail-icon { transform: scale(1.45); }
+  .is-docked .rail-nav li:hover + li .rail-icon,
+  .is-docked .rail-nav li:has(+ li:hover) .rail-icon { transform: scale(1.18); }
+  .rail-dock:active { transform: scale(0.94); }
+}
+
+@media (max-width: 880px) {
+  /* The rail is already a dock across the top here, so collapsing it would say nothing. */
+  .rail-dock { display: none; }
+  .is-docked { grid-template-columns: minmax(0, 1fr); }
+  .is-docked .rail-group, .is-docked .rail-foot, .is-docked .brand-word { display: revert; }
+  .is-docked .rail-nav a { justify-content: flex-start; }
+  .is-docked .rail-word { position: static; opacity: 1; transform: none; background: none; color: inherit; padding: 0; }
+}

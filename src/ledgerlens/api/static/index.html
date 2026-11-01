@@ -17,24 +17,31 @@
 
   <!-- The desk rail. No upper bar: navigation sits on the left and stays put while the work scrolls. -->
   <nav class="rail" aria-label="Workspace">
-    <a class="brand" href="#/fpa">
-      <span class="brand-mark" aria-hidden="true"></span>
-      <span>LedgerLens</span>
-    </a>
+    <div class="rail-head">
+      <a class="brand" href="#/fpa">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-word">LedgerLens</span>
+      </a>
+      <button type="button" class="rail-dock" id="rail-dock" aria-expanded="true" aria-controls="rail-nav-packs"
+              title="Collapse the sidebar">
+        <i class="ph-light ph-sidebar-simple" aria-hidden="true"></i>
+        <span class="sr-only">Collapse the sidebar</span>
+      </button>
+    </div>
 
     <p class="rail-group">Packs</p>
-    <ul class="rail-nav">
-      <li><a href="#/fpa" data-tab="fpa"><i class="ph-light ph-chart-line-up rail-icon" aria-hidden="true"></i>FP&amp;A</a></li>
-      <li><a href="#/interviews" data-tab="interviews"><i class="ph-light ph-users rail-icon" aria-hidden="true"></i>Interviews</a></li>
-      <li><a href="#/ratecards" data-tab="ratecards"><i class="ph-light ph-receipt rail-icon" aria-hidden="true"></i>Rate cards</a></li>
-      <li><a href="#/yours" data-tab="yours"><i class="ph-light ph-sliders-horizontal rail-icon" aria-hidden="true"></i>Your numbers</a></li>
+    <ul class="rail-nav" id="rail-nav-packs">
+      <li><a href="#/fpa" data-tab="fpa"><i class="ph-light ph-chart-line-up rail-icon" aria-hidden="true"></i><span class="rail-word">FP&amp;A</span></a></li>
+      <li><a href="#/interviews" data-tab="interviews"><i class="ph-light ph-users rail-icon" aria-hidden="true"></i><span class="rail-word">Interviews</span></a></li>
+      <li><a href="#/ratecards" data-tab="ratecards"><i class="ph-light ph-receipt rail-icon" aria-hidden="true"></i><span class="rail-word">Rate cards</span></a></li>
+      <li><a href="#/yours" data-tab="yours"><i class="ph-light ph-sliders-horizontal rail-icon" aria-hidden="true"></i><span class="rail-word">Your numbers</span></a></li>
     </ul>
 
     <p class="rail-group">Governance</p>
     <ul class="rail-nav">
-      <li><a href="#/approvals" data-tab="approvals"><i class="ph-light ph-stamp rail-icon" aria-hidden="true"></i>Approvals</a></li>
-      <li><a href="#/audit" data-tab="audit"><i class="ph-light ph-list-magnifying-glass rail-icon" aria-hidden="true"></i>Audit and cost</a></li>
-      <li><a href="#/method" data-tab="method"><i class="ph-light ph-function rail-icon" aria-hidden="true"></i>Method</a></li>
+      <li><a href="#/approvals" data-tab="approvals"><i class="ph-light ph-stamp rail-icon" aria-hidden="true"></i><span class="rail-word">Approvals</span></a></li>
+      <li><a href="#/audit" data-tab="audit"><i class="ph-light ph-list-magnifying-glass rail-icon" aria-hidden="true"></i><span class="rail-word">Audit and cost</span></a></li>
+      <li><a href="#/method" data-tab="method"><i class="ph-light ph-function rail-icon" aria-hidden="true"></i><span class="rail-word">Method</span></a></li>
     </ul>
 
     <div class="rail-foot">

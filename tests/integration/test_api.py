@@ -223,17 +223,32 @@ def test_every_module_a_module_imports_is_served(client: TestClient):
     assert seen >= 2, "no relative imports found; this guard is checking nothing"
 
 
-def test_the_shell_holds_every_element_the_router_writes_into(client: TestClient):
-    """app.js reaches for these by id, so one dropped from the page is a TypeError only a browser sees.
-
-    The rail replaced the old top bar and the ids moved with it; this is what notices next time.
+def test_the_shell_holds_every_element_the_modules_write_into(client: TestClient):
+    """The modules reach for these by id, so one dropped from the page is a TypeError only a browser
+    sees. Every module is scanned, not just the router, because the dock and the guide look things
+    up too.
     """
     workspace = client.get("/app").text
-    router = client.get("/static/app.js").text
-    wanted = set(re.findall(r'getElementById\("([\w-]+)"\)', router))
-    assert wanted, "the router stopped looking elements up by id; this guard needs rewriting"
+    wanted: set[str] = set()
+    for module in STATIC_DIR.rglob("*.js"):
+        wanted |= set(re.findall(r'getElementById\("([\w-]+)"\)', module.read_text(encoding="utf-8")))
+    assert wanted, "nothing is looked up by id any more; this guard needs rewriting"
     served = set(re.findall(r'id="([\w-]+)"', workspace))
     assert wanted <= served, f"the workspace is missing: {sorted(wanted - served)}"
+
+
+def test_every_rail_link_carries_a_word_as_well_as_an_icon(client: TestClient):
+    """Docked, the rail shows icons only and hides the words with CSS.
+
+    The word has to stay in the DOM for that: swap it for a title attribute and every link in the
+    collapsed rail loses its accessible name, which no screenshot would show.
+    """
+    workspace = client.get("/app").text
+    links = re.findall(r'<a href="#/[a-z]+" data-tab="[a-z]+">(.*?)</a>', workspace)
+    assert len(links) == 7, f"expected one link per page, found {len(links)}"
+    for link in links:
+        assert "rail-icon" in link, link
+        assert re.search(r'class="rail-word">[^<]+</span>', link), f"this link has no word: {link}"
 
 
 @pytest.mark.parametrize("path", ["/terms", "/privacy"])
